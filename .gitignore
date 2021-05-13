@@ -71,3 +71,11 @@ crashlytics-build.properties
 [Aa]ssets/[Ss]treamingAssets/aa/*
 *.log
 *.log
+Broken/Logs/shadercompiler-UnityShaderCompiler.exe0.log
+Broken/Logs/shadercompiler-UnityShaderCompiler.exe1.log
+Broken/Logs/shadercompiler-UnityShaderCompiler.exe2.log
+Broken/Logs/shadercompiler-UnityShaderCompiler.exe3.log
+Broken/Logs/shadercompiler-UnityShaderCompiler.exe4.log
+Broken/Logs/shadercompiler-UnityShaderCompiler.exe5.log
+Broken/Logs/shadercompiler-UnityShaderCompiler.exe6.log
+Broken/Logs/shadercompiler-UnityShaderCompiler.exe7.log
