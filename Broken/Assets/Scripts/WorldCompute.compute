@@ -239,13 +239,14 @@ void PopulateRender(uint3 id : SV_DispatchThreadID)
 	}
 }
 
-[numthreads(32,1, 1)]
+[numthreads(64,1, 1)]
 void RaycastCull(uint3 id : SV_DispatchThreadID)
 {
 	uint index = _LeadingEdgeTable[id.x];
-
 	if (index != 0)
 	{
+
+		//this is retarded but idk how to fix the loop
 		if (_MeshProperties[index].index != 0)
 		{
 			InterlockedAdd(_Counter[0], 1);
@@ -285,10 +286,12 @@ void RaycastCull(uint3 id : SV_DispatchThreadID)
 	}
 }
 
-[numthreads(32, 1, 1)]
+[numthreads(64, 1, 1)]
 void StupidCull(uint3 id: SV_DispatchThreadID)
 {
 	uint index = _LeadingEdgeTable[id.x];
+
+
 }
 
 

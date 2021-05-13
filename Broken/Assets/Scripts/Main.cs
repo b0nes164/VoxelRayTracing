@@ -138,7 +138,7 @@ public class Main : MonoBehaviour
                 computeShader.SetBuffer(rayKernel, "_EdgeTable", edgeBuffer);
                 computeShader.SetBuffer(rayKernel, "_MeshProperties", mainBuffers[i]);
                 computeShader.SetBuffer(rayKernel, "_Counter", countBuffer);
-                computeShader.Dispatch(rayKernel, Mathf.CeilToInt(leadingEdgeCount / 32f), 1, 1);
+                computeShader.Dispatch(rayKernel, Mathf.CeilToInt(leadingEdgeCount / 64f), 1, 1);
                 countBuffer.GetData(count);
             }
 
