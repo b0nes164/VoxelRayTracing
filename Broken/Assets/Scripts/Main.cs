@@ -23,7 +23,7 @@ public class Main : MonoBehaviour
     private static int leadingChunkCount = (xChunks * zChunks) + (xChunks * (yChunks - 1)) + ((zChunks - 1) * (yChunks - 1));
 
     private static int length = 32;
-    private static int height = 32;
+    private static int height = 16;
     private static int width = 32;
     private static int leadingEdgeCount = (length * width) + (length * (height - 1)) + ((width - 1) * (height - 1));
     private static int cubeCount = length * width * height;
@@ -60,11 +60,15 @@ public class Main : MonoBehaviour
     void Start()
     {
         bounds = new Bounds(transform.position, Vector3.one * 10000);
-
-        int initilializeChunkKernel = computeShader.FindKernel("InitializeChunks");
         computeShader.SetInt("xChunks", xChunks);
         computeShader.SetInt("yChunks", yChunks);
         computeShader.SetInt("zChunks", zChunks);
+        computeShader.SetInt("length", length);
+        computeShader.SetInt("height", height);
+        computeShader.SetInt("width", width);
+
+
+        int initilializeChunkKernel = computeShader.FindKernel("InitializeChunks");
         chunkBuffer = new ComputeBuffer(chunkCount, sizeof(uint) * 3);
         leadingChunkEdgeBuffer = new ComputeBuffer(leadingChunkCount, sizeof(uint), ComputeBufferType.Append);
         leadingChunkEdgeBuffer.SetCounterValue(0);
@@ -76,7 +80,8 @@ public class Main : MonoBehaviour
         chunkBuffer.Release();
         leadingChunkEdgeBuffer.Release();
 
-        for (int i = 0; i < chunkPos.Length; i++)
+        /*
+         for (int i = 0; i < chunkPos.Length; i++)
         {
             Debug.Log(chunkPos[i]);
 
@@ -85,11 +90,9 @@ public class Main : MonoBehaviour
                 Debug.Log(leadingChunks[i]);
             }
         }
+         */
 
         int initializeKernel = computeShader.FindKernel("InitializeCubes");
-        computeShader.SetInt("length", length);
-        computeShader.SetInt("height", height);
-        computeShader.SetInt("width", width);
         interiorChunkBuffer = new ComputeBuffer(cubeCount, sizeof(uint) * 3);
         edgeBuffer = new ComputeBuffer(cubeCount, sizeof(uint));
         leadingEdgeBuffer = new ComputeBuffer(leadingEdgeCount, sizeof(uint), ComputeBufferType.Append);

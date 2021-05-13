@@ -253,7 +253,7 @@ void RaycastCull(uint3 id : SV_DispatchThreadID)
 
 			while (_EdgeTable[index] == 0)
 			{
-				index -= ((length * width) + width + 1);
+				index -= ((width * height) + width + 1);
 				_MeshProperties[index].facing = 0;
 			}
 		}
@@ -264,7 +264,7 @@ void RaycastCull(uint3 id : SV_DispatchThreadID)
 
 		while (_EdgeTable[index] == 0)
 		{
-			index -= ((length * width) + width + 1);
+			index -= ((width * height) + width + 1);
 
 			if (_MeshProperties[index].index != 0)
 			{
@@ -273,7 +273,7 @@ void RaycastCull(uint3 id : SV_DispatchThreadID)
 
 				while (_EdgeTable[index] == 0)
 				{
-					index -= ((length * width) + width + 1);
+					index -= ((width * height) + width + 1);
 					_MeshProperties[index].facing = 0;
 				}
 			}
