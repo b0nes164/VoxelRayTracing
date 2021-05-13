@@ -204,7 +204,8 @@ void Noise(uint3 id : SV_DispatchThreadID)
 {
 	if(noise((_ChunkTable[id.x] + uint3(xOffset, yOffset, zOffset)) * 0.1) >= .45)
 	{
-		_MeshProperties[id.x].index = 1;
+		//this will need to be revisted later for more complex world gen
+		_MeshProperties[id.x].index |= 1U << 0;
 	}
 	else
 	{
