@@ -117,7 +117,7 @@ public class Main : MonoBehaviour
             computeShader.Dispatch(countKernel, 1, 1, 1);
 
             int noiseKernel = computeShader.FindKernel("Noise");
-            mainBuffers[i] = new ComputeBuffer(cubeCount, sizeof(uint) * 2);
+            mainBuffers[i] = new ComputeBuffer(cubeCount, sizeof(uint));
             computeShader.SetBuffer(noiseKernel, "_ChunkTable", interiorChunkBuffer);
             computeShader.SetBuffer(noiseKernel, "_MeshProperties", mainBuffers[i]);
             computeShader.Dispatch(noiseKernel, dispatchGroups, 1, 1);

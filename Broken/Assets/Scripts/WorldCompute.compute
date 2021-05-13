@@ -7,26 +7,13 @@
 #pragma kernel RaycastCull
 #pragma kernel StupidCull
 
-struct MeshProperties
-{
-	uint index;
-	uint facing;
-};
-
 RWStructuredBuffer<uint3> _ChunkTable;
 AppendStructuredBuffer<uint> _LeadingEdgeTemp;
 RWStructuredBuffer<uint> _LeadingEdgeTable;
 RWStructuredBuffer<uint> _EdgeTable;
-RWStructuredBuffer<MeshProperties> _MeshProperties;
+RWStructuredBuffer<uint> _MeshProperties;
 RWStructuredBuffer<int> _Counter;
 AppendStructuredBuffer<uint> _RenderProperties;
-
-RWStructuredBuffer<MeshProperties> _ChunkLeft;
-RWStructuredBuffer<MeshProperties> _ChunkRight;
-RWStructuredBuffer<MeshProperties> _ChunkFront;
-RWStructuredBuffer<MeshProperties> _ChunkBack;
-RWStructuredBuffer<MeshProperties> _ChunkTop;
-RWStructuredBuffer<MeshProperties> _ChunkBottom;
 
 uint length;
 uint height;
@@ -37,7 +24,7 @@ uint zChunks;
 uint xOffset;
 uint yOffset;
 uint zOffset;
-
+uint test;
 
 
 //
@@ -205,36 +192,35 @@ void Noise(uint3 id : SV_DispatchThreadID)
 	if(noise((_ChunkTable[id.x] + uint3(xOffset, yOffset, zOffset)) * 0.1) >= .45)
 	{
 		//this will need to be revisted later for more complex world gen
-		_MeshProperties[id.x].index |= 1U << 0;
+		_MeshProperties[id.x] |= 1U << 0;
 	}
 	else
 	{
-		_MeshProperties[id.x].index = 0;
+		_MeshProperties[id.x] = 0;
 	}
 }
 
 [numthreads(1024, 1, 1)]
 void CheckFaces(uint3 id : SV_DispatchThreadID)
 {
-	if (_MeshProperties[id.x].index != 0 && (_MeshProperties[id.x + 1].index == 0 || _MeshProperties[id.x - 1].index == 0 
-		|| _MeshProperties[id.x + width].index == 0 || _MeshProperties[id.x - width].index == 0 
-		|| _MeshProperties[id.x + width * height].index == 0 || _MeshProperties[id.x - width * height].index == 0 
+	if (_MeshProperties[id.x] != 0 && (_MeshProperties[id.x + 1] == 0 || _MeshProperties[id.x - 1] == 0 
+		|| _MeshProperties[id.x + width] == 0 || _MeshProperties[id.x - width] == 0 
+		|| _MeshProperties[id.x + width * height] == 0 || _MeshProperties[id.x - width * height] == 0 
 		|| _ChunkTable[id.x].y == 0 || _ChunkTable[id.x].y == height - 1 || _ChunkTable[id.x].z == 0 || _ChunkTable[id.x].z == width - 1))
 	{
 		InterlockedAdd(_Counter[0], 1);
-		_MeshProperties[id.x].facing = 1;
+		_MeshProperties[id.x] |= 1U << 12;
 	}
 	else
 	{
-		InterlockedAdd(_Counter[0], 1);
-		_MeshProperties[id.x].facing = 0;
+		_MeshProperties[id.x] &= ~(1U << 12);
 	}
 }
 
 [numthreads(1024, 1, 1)]
 void PopulateRender(uint3 id : SV_DispatchThreadID)
 {
-	if (_MeshProperties[id.x].facing == 1)
+	if ((_MeshProperties[id.x] >> 12) & 1U == 1)
 	{
 		_RenderProperties.Append(id.x);
 	}
@@ -248,40 +234,40 @@ void RaycastCull(uint3 id : SV_DispatchThreadID)
 	{
 
 		//this is retarded but idk how to fix the loop
-		if (_MeshProperties[index].index != 0)
+		if (_MeshProperties[index] != 0)
 		{
 			InterlockedAdd(_Counter[0], 1);
-			_MeshProperties[index].facing |= 1 << 0;
+			_MeshProperties[index] |= 1U << 12;
 
 			while (_EdgeTable[index] == 0)
 			{
 				index -= ((width * height) + width + 1);
-				_MeshProperties[index].facing = 0;
+				_MeshProperties[index] &= ~(1U << 12);
 			}
 		}
 		else
 		{
-			_MeshProperties[index].facing = 0;
+			_MeshProperties[index] &= ~(1U << 12);
 		}
 
 		while (_EdgeTable[index] == 0)
 		{
 			index -= ((width * height) + width + 1);
 
-			if (_MeshProperties[index].index != 0)
+			if (_MeshProperties[index] != 0)
 			{
 				InterlockedAdd(_Counter[0], 1);
-				_MeshProperties[index].facing |= 1 << 0;
+				_MeshProperties[index] |= 1U << 12;
 
 				while (_EdgeTable[index] == 0)
 				{
 					index -= ((width * height) + width + 1);
-					_MeshProperties[index].facing = 0;
+					_MeshProperties[index] &= ~(1U << 12);
 				}
 			}
 			else
 			{
-				_MeshProperties[index].facing = 0;
+				_MeshProperties[index] &= ~(1U << 12);
 			}
 		}
 	}
