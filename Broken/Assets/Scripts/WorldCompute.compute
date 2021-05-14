@@ -243,6 +243,7 @@ void InitializeCubes(uint3 id : SV_DispatchThreadID)
 		{
 			if (isRight)
 			{
+				//Middle Right
 				_EdgeTable[id.x] = 7;
 				_LeadingEdgeTemp.Append(id.x);
 			}
@@ -282,7 +283,11 @@ void InitializeAdjacentChunkIndexes(uint3 id : SV_DispatchThreadID)
 			_AdjacentChunkIndexesTemp.Append(index + 1);
 			break;
 		case 6:
-			_AdjacentChunkIndexesTemp.Append(index);
+			_AdjacentChunkIndexesTemp.Append(index + width);
+			break;
+		case 7:
+			_AdjacentChunkIndexesTemp.Append(index + width * height + 1);
+			break;
 		}
 
 	}
