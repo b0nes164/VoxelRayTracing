@@ -1,6 +1,7 @@
 #pragma kernel InitializeCounter
 #pragma kernel InitializeChunks
 #pragma kernel InitializeCubes
+#pragma kernel InitializeAdjacentChunkIndexes
 #pragma kernel Noise
 #pragma kernel CheckFaces
 #pragma kernel PopulateRender
@@ -11,10 +12,14 @@ RWStructuredBuffer<uint3> _ChunkTable;
 AppendStructuredBuffer<uint> _LeadingEdgeTemp;
 RWStructuredBuffer<uint> _LeadingEdgeTable;
 RWStructuredBuffer<uint> _EdgeTable;
+AppendStructuredBuffer<uint> _AdjacentChunkIndexesTemp;
 RWStructuredBuffer<uint> _MeshProperties;
 RWStructuredBuffer<int> _Counter;
 AppendStructuredBuffer<uint> _RenderProperties;
 
+RWStructuredBuffer<uint> _DiagonalTopChunk;
+
+uint cubeCount;
 uint length;
 uint height;
 uint width;
@@ -24,8 +29,6 @@ uint zChunks;
 uint xOffset;
 uint yOffset;
 uint zOffset;
-uint test;
-
 
 //
 // Description : Array and textureless GLSL 2D/3D/4D simplex 
@@ -248,11 +251,31 @@ void InitializeCubes(uint3 id : SV_DispatchThreadID)
 
 	if (_ChunkTable[id.x].x == 0 || _ChunkTable[id.x].y == 0 || _ChunkTable[id.x].z == 0)
 	{
-		_EdgeTable[id.x] = 1;
+		//trailing face
+		_EdgeTable[id.x] = 8;
 	}
 	else
 	{
 		_EdgeTable[id.x] = 0;
+	}
+}
+
+[numthreads(64,1,1)]
+void InitializeAdjacentChunkIndexes(uint3 id : SV_DispatchThreadID)
+{
+	uint index = _LeadingEdgeTable[id.x];
+	if (index != 0)
+	{
+		uint edgeCase = _EdgeTable[index];
+		[forcecase] switch (edgeCase)
+		{
+		case 2:
+
+			_AdjacentChunkIndexesTemp.Append(cubeCount - width - 1);
+			break;
+
+		}
+
 	}
 }
 
@@ -348,7 +371,25 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 {
 	uint index = _LeadingEdgeTable[id.x];
 
+	if(index != 0)
+	{
+		uint edgeCase = _EdgeTable[index];
+		[forcecase] switch (edgeCase)
+		{
+		case 1:
 
+			if (_DiagonalTopChunk[0] == 1)
+			{
+
+			}
+			else
+			{
+				_MeshProperties[index] &= ~(1U << 12);
+			}
+			break;
+
+		}
+	}
 }
 
 
