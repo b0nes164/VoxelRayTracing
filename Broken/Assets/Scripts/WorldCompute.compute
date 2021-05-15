@@ -13,11 +13,19 @@ AppendStructuredBuffer<uint> _LeadingEdgeTemp;
 RWStructuredBuffer<uint> _LeadingEdgeTable;
 RWStructuredBuffer<uint> _EdgeTable;
 AppendStructuredBuffer<uint> _AdjacentChunkIndexesTemp;
+RWStructuredBuffer<uint> _AdjacentChunkIndexesTable;
 RWStructuredBuffer<uint> _MeshProperties;
 RWStructuredBuffer<int> _Counter;
 AppendStructuredBuffer<uint> _RenderProperties;
 
+//These are just references for the cull method
 RWStructuredBuffer<uint> _DiagonalTopChunk;
+RWStructuredBuffer<uint> _TopLeftChunk;
+RWStructuredBuffer<uint> _DiagonalMiddleChunk;
+RWStructuredBuffer<uint> _MiddleLeftChunk;
+RWStructuredBuffer<uint> _TopRightChunk;
+RWStructuredBuffer<uint> _MiddleTopChunk;
+RWStructuredBuffer<uint> _MiddleRightChunk;
 
 uint cubeCount;
 uint length;
@@ -270,6 +278,9 @@ void InitializeAdjacentChunkIndexes(uint3 id : SV_DispatchThreadID)
 		uint edgeCase = _EdgeTable[index];
 		[forcecase] switch (edgeCase)
 		{
+		case 1:
+			_AdjacentChunkIndexesTemp.Append(index - cubeCount);
+			break;
 		case 2:
 			_AdjacentChunkIndexesTemp.Append(index - (cubeCount - width - 1));
 			break;
@@ -339,7 +350,6 @@ void RaycastCull(uint3 id : SV_DispatchThreadID)
 	uint index = _LeadingEdgeTable[id.x];
 	if (index != 0)
 	{
-
 		//this is retarded but idk how to fix the loop
 		if (_MeshProperties[index] != 0)
 		{
@@ -380,6 +390,16 @@ void RaycastCull(uint3 id : SV_DispatchThreadID)
 	}
 }
 
+/*
+RWStructuredBuffer<uint> _DiagonalTopChunk;
+RWStructuredBuffer<uint> _TopLeftChunk;
+RWStructuredBuffer<uint> _DiagonalMiddleChunk;
+RWStructuredBuffer<uint> _MiddleLeftChunk;
+RWStructuredBuffer<uint> _TopRightChunk;
+RWStructuredBuffer<uint> _MiddleTopChunk;
+RWStructuredBuffer<uint> _MiddleRightChunk;
+*/
+
 [numthreads(64, 1, 1)]
 void StupidCull(uint3 id: SV_DispatchThreadID)
 {
@@ -391,7 +411,61 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 		[forcecase] switch (edgeCase)
 		{
 		case 1:
+			if ((_DiagonalTopChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U == 0)
+			{
+				if (_MeshProperties[index] != 0)
+				{
+					InterlockedAdd(_Counter[0], 1);
+					_MeshProperties[index] |= 1U << 12;
+					_MeshProperties[index] |= 1U << 13;
 
+					while (_EdgeTable[index] == 0)
+					{
+						index -= ((width * height) + width + 1);
+						_MeshProperties[index] &= ~(1U << 12);
+						_MeshProperties[index] |= 1U << 13;
+					}
+				}
+				else
+				{
+					_MeshProperties[index] &= ~(1U << 12);
+				}
+
+				while (_EdgeTable[index] == 0)
+				{
+					index -= ((width * height) + width + 1);
+
+					if (_MeshProperties[index] != 0)
+					{
+						InterlockedAdd(_Counter[0], 1);
+						_MeshProperties[index] |= 1U << 12;
+						_MeshProperties[index] |= 1U << 13;
+
+						while (_EdgeTable[index] == 0)
+						{
+							index -= ((width * height) + width + 1);
+							_MeshProperties[index] &= ~(1U << 12);
+							_MeshProperties[index] |= 1U << 13;
+						}
+					}
+					else
+					{
+						_MeshProperties[index] &= ~(1U << 12);
+					}
+				}
+			}
+			else
+			{
+				while (_EdgeTable[index] == 0)
+				{
+					index -= ((width * height) + width + 1);
+					_MeshProperties[index] &= ~(1U << 12);
+					_MeshProperties[index] |= 1U << 13;
+				}
+			}
+			break;
+
+		case 2:
 			if (_DiagonalTopChunk[0] == 1)
 			{
 
@@ -402,6 +476,61 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 			}
 			break;
 
+		case 3:
+
+			if (_DiagonalTopChunk[0] == 1)
+			{
+
+			}
+			else
+			{
+				_MeshProperties[index] &= ~(1U << 12);
+			}
+			break;
+		case 4:
+
+			if (_DiagonalTopChunk[0] == 1)
+			{
+
+			}
+			else
+			{
+				_MeshProperties[index] &= ~(1U << 12);
+			}
+			break;
+		case 5:
+
+			if (_DiagonalTopChunk[0] == 1)
+			{
+
+			}
+			else
+			{
+				_MeshProperties[index] &= ~(1U << 12);
+			}
+			break;
+		case 6:
+
+			if (_DiagonalTopChunk[0] == 1)
+			{
+
+			}
+			else
+			{
+				_MeshProperties[index] &= ~(1U << 12);
+			}
+			break;
+		case 7:
+
+			if (_DiagonalTopChunk[0] == 1)
+			{
+
+			}
+			else
+			{
+				_MeshProperties[index] &= ~(1U << 12);
+			}
+			break;
 		}
 	}
 }
