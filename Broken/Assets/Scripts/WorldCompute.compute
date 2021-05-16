@@ -1,14 +1,16 @@
 #pragma kernel InitializeCounter
 #pragma kernel InitializeChunks
+#pragma kernel InitializeDummyChunk
 #pragma kernel InitializeCubes
 #pragma kernel InitializeAdjacentChunkIndexes
 #pragma kernel Noise
 #pragma kernel CheckFaces
-#pragma kernel PopulateRender
+#pragma kernel PopulateRender 
 #pragma kernel RaycastCull
 #pragma kernel StupidCull
 
 RWStructuredBuffer<uint3> _ChunkTable;
+RWStructuredBuffer<uint> _DummyChunk;
 AppendStructuredBuffer<uint> _LeadingEdgeTemp;
 RWStructuredBuffer<uint> _LeadingEdgeTable;
 RWStructuredBuffer<uint> _EdgeTable;
@@ -177,6 +179,12 @@ void InitializeChunks(uint3 id : SV_DispatchThreadID)
 	{
 		_LeadingEdgeTemp.Append(id.x);
 	}
+}
+
+[numthreads(8, 1, 1)]
+void InitializeDummyChunk(uint3 id : SV_DispatchThreadID)
+{
+	_DummyChunk[id.x] = 0;
 }
 
 [numthreads(1024, 1, 1)]
@@ -390,29 +398,64 @@ void RaycastCull(uint3 id : SV_DispatchThreadID)
 	}
 }
 
-/*
-RWStructuredBuffer<uint> _DiagonalTopChunk;
-RWStructuredBuffer<uint> _TopLeftChunk;
-RWStructuredBuffer<uint> _DiagonalMiddleChunk;
-RWStructuredBuffer<uint> _MiddleLeftChunk;
-RWStructuredBuffer<uint> _TopRightChunk;
-RWStructuredBuffer<uint> _MiddleTopChunk;
-RWStructuredBuffer<uint> _MiddleRightChunk;
-*/
-
 [numthreads(64, 1, 1)]
 void StupidCull(uint3 id: SV_DispatchThreadID)
 {
 	uint index = _LeadingEdgeTable[id.x];
+	bool visibilityCheck = 0;
 
-	if(index != 0)
+	if (index != 0)
 	{
 		uint edgeCase = _EdgeTable[index];
 		[forcecase] switch (edgeCase)
 		{
 		case 1:
-			if ((_DiagonalTopChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U == 0)
+			visibilityCheck = (_DiagonalTopChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			break;
+		case 2:
+			visibilityCheck = (_TopLeftChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			break;
+		case 3:
+			visibilityCheck = (_DiagonalMiddleChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			break;
+		case 4:
+			visibilityCheck = (_MiddleLeftChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			break;
+		case 5:
+			visibilityCheck = (_TopRightChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			break;
+		case 6:
+			visibilityCheck = (_MiddleTopChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			break;
+		case 7:
+			visibilityCheck = (_MiddleRightChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			break;
+		}
+
+		if (visibilityCheck)
+		{
+			if (_MeshProperties[index] != 0)
 			{
+				InterlockedAdd(_Counter[0], 1);
+				_MeshProperties[index] |= 1U << 12;
+				_MeshProperties[index] |= 1U << 13;
+
+				while (_EdgeTable[index] == 0)
+				{
+					index -= ((width * height) + width + 1);
+					_MeshProperties[index] &= ~(1U << 12);
+					_MeshProperties[index] |= 1U << 13;
+				}
+			}
+			else
+			{
+				_MeshProperties[index] &= ~(1U << 12);
+			}
+
+			while (_EdgeTable[index] == 0)
+			{
+				index -= ((width * height) + width + 1);
+
 				if (_MeshProperties[index] != 0)
 				{
 					InterlockedAdd(_Counter[0], 1);
@@ -430,107 +473,16 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 				{
 					_MeshProperties[index] &= ~(1U << 12);
 				}
-
-				while (_EdgeTable[index] == 0)
-				{
-					index -= ((width * height) + width + 1);
-
-					if (_MeshProperties[index] != 0)
-					{
-						InterlockedAdd(_Counter[0], 1);
-						_MeshProperties[index] |= 1U << 12;
-						_MeshProperties[index] |= 1U << 13;
-
-						while (_EdgeTable[index] == 0)
-						{
-							index -= ((width * height) + width + 1);
-							_MeshProperties[index] &= ~(1U << 12);
-							_MeshProperties[index] |= 1U << 13;
-						}
-					}
-					else
-					{
-						_MeshProperties[index] &= ~(1U << 12);
-					}
-				}
 			}
-			else
+		}
+		else
+		{
+			while (_EdgeTable[index] == 0)
 			{
-				while (_EdgeTable[index] == 0)
-				{
-					index -= ((width * height) + width + 1);
-					_MeshProperties[index] &= ~(1U << 12);
-					_MeshProperties[index] |= 1U << 13;
-				}
-			}
-			break;
-
-		case 2:
-			if (_DiagonalTopChunk[0] == 1)
-			{
-
-			}
-			else
-			{
+				index -= ((width * height) + width + 1);
 				_MeshProperties[index] &= ~(1U << 12);
+				_MeshProperties[index] |= 1U << 13;
 			}
-			break;
-
-		case 3:
-
-			if (_DiagonalTopChunk[0] == 1)
-			{
-
-			}
-			else
-			{
-				_MeshProperties[index] &= ~(1U << 12);
-			}
-			break;
-		case 4:
-
-			if (_DiagonalTopChunk[0] == 1)
-			{
-
-			}
-			else
-			{
-				_MeshProperties[index] &= ~(1U << 12);
-			}
-			break;
-		case 5:
-
-			if (_DiagonalTopChunk[0] == 1)
-			{
-
-			}
-			else
-			{
-				_MeshProperties[index] &= ~(1U << 12);
-			}
-			break;
-		case 6:
-
-			if (_DiagonalTopChunk[0] == 1)
-			{
-
-			}
-			else
-			{
-				_MeshProperties[index] &= ~(1U << 12);
-			}
-			break;
-		case 7:
-
-			if (_DiagonalTopChunk[0] == 1)
-			{
-
-			}
-			else
-			{
-				_MeshProperties[index] &= ~(1U << 12);
-			}
-			break;
 		}
 	}
 }
