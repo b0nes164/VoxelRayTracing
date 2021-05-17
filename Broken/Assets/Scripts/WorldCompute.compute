@@ -407,18 +407,22 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 	if (index != 0)
 	{
 		uint edgeCase = _EdgeTable[index];
-		[forcecase] switch (edgeCase)
+		/*
+		switch (edgeCase)
 		{
 		case 1:
-			visibilityCheck = (_DiagonalTopChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			if ((_DiagonalTopChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U == 1)
+			{
+				visibilityCheck = 1;
+			}
 			break;
 		case 2:
-			visibilityCheck = (_TopLeftChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			visibilityCheck = (_TopLeftChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 0U;
 			break;
 		case 3:
-			visibilityCheck = (_DiagonalMiddleChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			visibilityCheck = (_DiagonalMiddleChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 0U;
 			break;
-		case 4:
+			case 4:
 			visibilityCheck = (_MiddleLeftChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
 			break;
 		case 5:
@@ -431,9 +435,73 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 			visibilityCheck = (_MiddleRightChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
 			break;
 		}
+		*/
+		
 
-		if (visibilityCheck)
+		if (_MeshProperties[index] != 0)
 		{
+			InterlockedAdd(_Counter[0], 1);
+			_MeshProperties[index] |= 1U << 12;
+
+			while (_EdgeTable[index] == 0)
+			{
+				index -= ((width * height) + width + 1);
+				_MeshProperties[index] &= ~(1U << 12);
+			}
+		}
+		else
+		{
+			_MeshProperties[index] &= ~(1U << 12);
+		}
+
+		while (_EdgeTable[index] == 0)
+		{
+			index -= ((width * height) + width + 1);
+
+			if (_MeshProperties[index] != 0)
+			{
+				InterlockedAdd(_Counter[0], 1);
+				_MeshProperties[index] |= 1U << 12;
+
+				while (_EdgeTable[index] == 0)
+				{
+					index -= ((width * height) + width + 1);
+					_MeshProperties[index] &= ~(1U << 12);
+				}
+			}
+			else
+			{
+				_MeshProperties[index] &= ~(1U << 12);
+			}
+		}
+	
+		
+
+		/*
+				if (visibilityCheck)
+		{
+			if (_MeshProperties[index] != 0)
+		{
+			InterlockedAdd(_Counter[0], 1);
+			_MeshProperties[index] |= 1U << 12;
+			_MeshProperties[index] |= 1U << 13;
+
+			while (_EdgeTable[index] == 0)
+			{
+				index -= ((width * height) + width + 1);
+				_MeshProperties[index] &= ~(1U << 12);
+				_MeshProperties[index] |= 1U << 13;
+			}
+		}
+		else
+		{
+			_MeshProperties[index] &= ~(1U << 12);
+		}
+
+		while (_EdgeTable[index] == 0)
+		{
+			index -= ((width * height) + width + 1);
+
 			if (_MeshProperties[index] != 0)
 			{
 				InterlockedAdd(_Counter[0], 1);
@@ -451,29 +519,7 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 			{
 				_MeshProperties[index] &= ~(1U << 12);
 			}
-
-			while (_EdgeTable[index] == 0)
-			{
-				index -= ((width * height) + width + 1);
-
-				if (_MeshProperties[index] != 0)
-				{
-					InterlockedAdd(_Counter[0], 1);
-					_MeshProperties[index] |= 1U << 12;
-					_MeshProperties[index] |= 1U << 13;
-
-					while (_EdgeTable[index] == 0)
-					{
-						index -= ((width * height) + width + 1);
-						_MeshProperties[index] &= ~(1U << 12);
-						_MeshProperties[index] |= 1U << 13;
-					}
-				}
-				else
-				{
-					_MeshProperties[index] &= ~(1U << 12);
-				}
-			}
+		}
 		}
 		else
 		{
@@ -484,6 +530,8 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 				_MeshProperties[index] |= 1U << 13;
 			}
 		}
+		*/
+
 	}
 }
 
