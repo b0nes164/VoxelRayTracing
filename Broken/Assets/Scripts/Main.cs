@@ -23,7 +23,6 @@ public class Main : MonoBehaviour
     private static int yChunks = 1;
     private static int zChunks = 1;
     private static int chunkCount = xChunks * yChunks * zChunks;
-    private static int leadingChunkCount = (xChunks * zChunks) + (xChunks * (yChunks - 1)) + ((zChunks - 1) * (yChunks - 1));
 
     private static int length = 16;
     private static int height = 16;
@@ -32,15 +31,12 @@ public class Main : MonoBehaviour
     private static int cubeCount = length * width * height;
     private static int dispatchGroups = Mathf.CeilToInt(cubeCount / 1024f);
 
-    private ComputeBuffer chunkBuffer;
-    private ComputeBuffer leadingChunkEdgeBuffer;
-    private uint[] leadingChunks = new uint[leadingChunkCount];
-    private Vector3Int[] chunkPos = new Vector3Int[chunkCount];
+    private ComputeBuffer chunkEdgeBuffer;
+    private uint[] chunkTable = new uint[chunkCount];
     private ComputeBuffer dummyBuffer;
 
     private ComputeBuffer interiorChunkBuffer;
     private ComputeBuffer edgeBuffer;
-    private ComputeBuffer leadingEdgeBuffer;
     private ComputeBuffer[] mainBuffers = new ComputeBuffer[chunkCount];
     private ComputeBuffer[] renderBuffers = new ComputeBuffer[chunkCount];
     private ComputeBuffer countBuffer;
@@ -69,31 +65,33 @@ public class Main : MonoBehaviour
         computeShader.SetInt("cubeCount", cubeCount);
 
         int initilializeChunkKernel = computeShader.FindKernel("InitializeChunks");
-        chunkBuffer = new ComputeBuffer(chunkCount, sizeof(uint) * 3);
-        leadingChunkEdgeBuffer = new ComputeBuffer(leadingChunkCount, sizeof(uint), ComputeBufferType.Append);
-        leadingChunkEdgeBuffer.SetCounterValue(0);
-        computeShader.SetBuffer(initilializeChunkKernel, "_ChunkTable", chunkBuffer);
-        computeShader.SetBuffer(initilializeChunkKernel, "_LeadingEdgeTemp", leadingChunkEdgeBuffer);
-        computeShader.Dispatch(initilializeChunkKernel, Mathf.CeilToInt(leadingChunkCount/ 8f), 1, 1);
-        chunkBuffer.GetData(chunkPos);
-        leadingChunkEdgeBuffer.GetData(leadingChunks);
-        chunkBuffer.Release();
-        leadingChunkEdgeBuffer.Release();
+        chunkEdgeBuffer = new ComputeBuffer(chunkCount, sizeof(uint));
+        computeShader.SetBuffer(initilializeChunkKernel, "_ChunkEdgeTable", chunkEdgeBuffer);
+        computeShader.Dispatch(initilializeChunkKernel, chunkCount, 1, 1);
+        chunkEdgeBuffer.GetData(chunkTable);
+        chunkEdgeBuffer.Release();
 
         int initializeKernel = computeShader.FindKernel("InitializeCubes");
         interiorChunkBuffer = new ComputeBuffer(cubeCount, sizeof(uint) * 3);
         edgeBuffer = new ComputeBuffer(cubeCount, sizeof(uint));
-        leadingEdgeBuffer = new ComputeBuffer(leadingEdgeCount, sizeof(uint), ComputeBufferType.Append);
-        leadingEdgeBuffer.SetCounterValue(0);
         computeShader.SetBuffer(initializeKernel, "_ChunkTable", interiorChunkBuffer);
         computeShader.SetBuffer(initializeKernel, "_EdgeTable", edgeBuffer);
-        computeShader.SetBuffer(initializeKernel, "_LeadingEdgeTemp", leadingEdgeBuffer);
         computeShader.Dispatch(initializeKernel, dispatchGroups, 1, 1);
-
+        /*
+         * test = new uint[cubeCount];
+        edgeBuffer.GetData(test);
+        for (int c = 0; c < test.Length; c++)
+        {
+            if (((test[c] >> 5) & 1U) == 1U)
+            {
+                Debug.Log(test[c] & 0x7);
+            }   
+        }
+         */
         int initializeDummyKernel = computeShader.FindKernel("InitializeDummyChunk");
         dummyBuffer = new ComputeBuffer(cubeCount, sizeof(uint));
         computeShader.SetBuffer(initializeDummyKernel, "_DummyChunk", dummyBuffer);
-        computeShader.Dispatch(initializeDummyKernel, Mathf.CeilToInt(leadingChunkCount / 8f), 1, 1);
+        computeShader.Dispatch(initializeDummyKernel, dispatchGroups, 1, 1);
 
         //populate the index
         for (int i = 0; i < chunkCount; i++)
@@ -136,7 +134,7 @@ public class Main : MonoBehaviour
                 computeShader.SetBuffer(stupidCullTwoKernel, "_Counter", countBuffer);
                 computeShader.SetBuffer(stupidCullTwoKernel, "_EdgeTable", edgeBuffer);
                  
-                if (i == leadingChunks[b])
+                if (chunkTable[i] == 1)
                 {
                     //set the adjacent chunks to the empty dummyBuffer
                     computeShader.SetBuffer(stupidCullKernel, "_DiagonalTopChunk", dummyBuffer);
@@ -173,7 +171,6 @@ public class Main : MonoBehaviour
                 computeShader.Dispatch(testKernel, dispatchGroups, 1, 1);
                 countBuffer.GetData(count);
             }
-            
 
 
             if (count[0] != 0)
@@ -216,7 +213,6 @@ public class Main : MonoBehaviour
     {
         interiorChunkBuffer.Release();
         edgeBuffer.Release();
-        leadingEdgeBuffer.Release();
         dummyBuffer.Release();
 
         for (int i = 0; i < chunkCount; i++)
