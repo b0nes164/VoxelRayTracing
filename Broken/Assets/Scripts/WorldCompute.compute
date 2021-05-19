@@ -8,6 +8,7 @@
 #pragma kernel PopulateRender 
 #pragma kernel RaycastCull
 #pragma kernel StupidCull
+#pragma kernel StupidCull2
 
 RWStructuredBuffer<uint3> _ChunkTable;
 RWStructuredBuffer<uint> _DummyChunk;
@@ -216,12 +217,17 @@ void InitializeCubes(uint3 id : SV_DispatchThreadID)
 			if (isRight)
 			{
 				//this is the single index for the leading corner of the chunk
-				_EdgeTable[id.x] = 1;
+				_EdgeTable[id.x] = 0;
+
+				//store the adjacent index for this case
+				_EdgeTable[id.x] |= (id.x - cubeCount) << 6;
 			}
 			else
 			{
 				//Top Left
-				_EdgeTable[id.x] = 2;
+				_EdgeTable[id.x] = 1;
+
+				_EdgeTable[id.x] |= (id.x - (cubeCount - width - 1)) << 6;
 			}
 		}
 		else
@@ -229,15 +235,20 @@ void InitializeCubes(uint3 id : SV_DispatchThreadID)
 			if (isRight)
 			{
 				//Diagonal Middle
-				_EdgeTable[id.x] = 3;
+				_EdgeTable[id.x] = 2;
+
+				_EdgeTable[id.x] |= (id.x - (cubeCount - width * height - 1)) << 6;
 			}
 			else
 			{
 				//Middle Left
-				_EdgeTable[id.x] = 4;
+				_EdgeTable[id.x] = 3;
+
+				_EdgeTable[id.x] |= (id.x - (cubeCount - width * height - width)) << 6;
 			}
 		}
-		_LeadingEdgeTemp.Append(id.x);
+
+		_EdgeTable[id.x] |= 1U << 5;
 	}
 	else
 	{
@@ -246,22 +257,29 @@ void InitializeCubes(uint3 id : SV_DispatchThreadID)
 			if (isRight)
 			{
 				//Top Right
-				_EdgeTable[id.x] = 5;
+				_EdgeTable[id.x] = 4;
+
+				_EdgeTable[id.x] |= (id.x + 1) << 6;
 			}
 			else
 			{
 				//Top Middle
-				_EdgeTable[id.x] = 6;
+				_EdgeTable[id.x] = 5;
+
+				_EdgeTable[id.x] |= (id.x + width) << 6;
 			}
-			_LeadingEdgeTemp.Append(id.x);
+			_EdgeTable[id.x] |= 1U << 5;
 		}
 		else
 		{
 			if (isRight)
 			{
 				//Middle Right
-				_EdgeTable[id.x] = 7;
-				_LeadingEdgeTemp.Append(id.x);
+				_EdgeTable[id.x] = 6;
+
+				_EdgeTable[id.x] |= (id.x + width * height + 1) << 6;
+
+				_EdgeTable[id.x] |= 1U << 5;
 			}
 		}
 	}
@@ -269,43 +287,43 @@ void InitializeCubes(uint3 id : SV_DispatchThreadID)
 	if (_ChunkTable[id.x].x == 0 || _ChunkTable[id.x].y == 0 || _ChunkTable[id.x].z == 0)
 	{
 		//trailing face
-		_EdgeTable[id.x] = 8;
+		//by default, no need for else statement, the 5th bit place will be zero
+		//idk but the 4th bit place doesnt seem to work;
+		_EdgeTable[id.x] |= 1U << 4;
 	}
-	else
-	{
-		_EdgeTable[id.x] = 0;
-	}
+	
+
 }
 
-[numthreads(64,1,1)]
+//this is unncessary
+[numthreads(1024,1,1)]
 void InitializeAdjacentChunkIndexes(uint3 id : SV_DispatchThreadID)
 {
-	uint index = _LeadingEdgeTable[id.x];
-	if (index != 0)
+	if (((_EdgeTable[id.x] >> 5) & 1U) == 1U)
 	{
-		uint edgeCase = _EdgeTable[index];
+		uint edgeCase = (_EdgeTable[id.x] & 0x7);
 		[forcecase] switch (edgeCase)
 		{
+		case 0:
+			_AdjacentChunkIndexesTemp.Append(id.x - cubeCount);
+			break;
 		case 1:
-			_AdjacentChunkIndexesTemp.Append(index - cubeCount);
+			_AdjacentChunkIndexesTemp.Append(id.x - (cubeCount - width - 1));
 			break;
 		case 2:
-			_AdjacentChunkIndexesTemp.Append(index - (cubeCount - width - 1));
+			_AdjacentChunkIndexesTemp.Append(id.x - (cubeCount - width * height - 1));
 			break;
 		case 3:
-			_AdjacentChunkIndexesTemp.Append(index - (cubeCount - width * height - 1));
+			_AdjacentChunkIndexesTemp.Append(id.x - (cubeCount - width * height - width));
 			break;
 		case 4:
-			_AdjacentChunkIndexesTemp.Append(index - (cubeCount - width * height - width));
+			_AdjacentChunkIndexesTemp.Append(id.x + 1);
 			break;
 		case 5:
-			_AdjacentChunkIndexesTemp.Append(index + 1);
+			_AdjacentChunkIndexesTemp.Append(id.x + width);
 			break;
 		case 6:
-			_AdjacentChunkIndexesTemp.Append(index + width);
-			break;
-		case 7:
-			_AdjacentChunkIndexesTemp.Append(index + width * height + 1);
+			_AdjacentChunkIndexesTemp.Append(id.x + width * height + 1);
 			break;
 		}
 
@@ -326,6 +344,7 @@ void Noise(uint3 id : SV_DispatchThreadID)
 	}
 }
 
+//method to check other algorithm
 [numthreads(1024, 1, 1)]
 void CheckFaces(uint3 id : SV_DispatchThreadID)
 {
@@ -352,6 +371,7 @@ void PopulateRender(uint3 id : SV_DispatchThreadID)
 	}
 }
 
+//this does not work anymore
 [numthreads(64,1, 1)]
 void RaycastCull(uint3 id : SV_DispatchThreadID)
 {
@@ -398,117 +418,63 @@ void RaycastCull(uint3 id : SV_DispatchThreadID)
 	}
 }
 
-[numthreads(64, 1, 1)]
+//this is retarded but necessary because of buffer limit
+[numthreads(1024, 1, 1)]
 void StupidCull(uint3 id: SV_DispatchThreadID)
-{
-	uint index = _LeadingEdgeTable[id.x];
-	bool visibilityCheck = 0;
-
-	if (index != 0)
+{	
+	if (((_EdgeTable[id.x] >> 5) & 1U) == 1U)
 	{
-		uint edgeCase = _EdgeTable[index];
-		/*
-		switch (edgeCase)
+		uint index = id.x;
+		bool visibilityCheck = 0;
+		bool skip = 1;
+
+		switch (_EdgeTable[index] & 0x7)
 		{
+		case 0:
+			if (((_DiagonalTopChunk[_EdgeTable[id.x] >> 6] >> 13) & 1U) == 0)
+			{
+				visibilityCheck = 1;
+			}
+			break;
 		case 1:
-			if ((_DiagonalTopChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U == 1)
+			if (((_TopLeftChunk[_EdgeTable[id.x] >> 6] >> 13) & 1U) == 0)
 			{
 				visibilityCheck = 1;
 			}
 			break;
 		case 2:
-			visibilityCheck = (_TopLeftChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 0U;
+			if (((_DiagonalMiddleChunk[_EdgeTable[id.x] >> 6] >> 13) & 1U) == 0)
+			{
+				visibilityCheck = 1;
+			}
 			break;
 		case 3:
-			visibilityCheck = (_DiagonalMiddleChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 0U;
+			if (((_MiddleLeftChunk[_EdgeTable[id.x] >> 6] >> 13) & 1U) == 0)
+			{
+				visibilityCheck = 1;
+			}
 			break;
-			case 4:
-			visibilityCheck = (_MiddleLeftChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+		case 4:
+			skip = 0;
 			break;
 		case 5:
-			visibilityCheck = (_TopRightChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			skip = 0;
 			break;
 		case 6:
-			visibilityCheck = (_MiddleTopChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
-			break;
-		case 7:
-			visibilityCheck = (_MiddleRightChunk[_AdjacentChunkIndexesTable[id.x]] >> 13) & 1U;
+			skip = 0;
 			break;
 		}
-		*/
 		
-
-		if (_MeshProperties[index] != 0)
+		if (visibilityCheck)
 		{
-			InterlockedAdd(_Counter[0], 1);
-			_MeshProperties[index] |= 1U << 12;
-
-			while (_EdgeTable[index] == 0)
-			{
-				index -= ((width * height) + width + 1);
-				_MeshProperties[index] &= ~(1U << 12);
-			}
-		}
-		else
-		{
-			_MeshProperties[index] &= ~(1U << 12);
-		}
-
-		while (_EdgeTable[index] == 0)
-		{
-			index -= ((width * height) + width + 1);
-
-			if (_MeshProperties[index] != 0)
-			{
-				InterlockedAdd(_Counter[0], 1);
-				_MeshProperties[index] |= 1U << 12;
-
-				while (_EdgeTable[index] == 0)
-				{
-					index -= ((width * height) + width + 1);
-					_MeshProperties[index] &= ~(1U << 12);
-				}
-			}
-			else
-			{
-				_MeshProperties[index] &= ~(1U << 12);
-			}
-		}
-	
-		
-
-		/*
-				if (visibilityCheck)
-		{
-			if (_MeshProperties[index] != 0)
-		{
-			InterlockedAdd(_Counter[0], 1);
-			_MeshProperties[index] |= 1U << 12;
-			_MeshProperties[index] |= 1U << 13;
-
-			while (_EdgeTable[index] == 0)
-			{
-				index -= ((width * height) + width + 1);
-				_MeshProperties[index] &= ~(1U << 12);
-				_MeshProperties[index] |= 1U << 13;
-			}
-		}
-		else
-		{
-			_MeshProperties[index] &= ~(1U << 12);
-		}
-
-		while (_EdgeTable[index] == 0)
-		{
-			index -= ((width * height) + width + 1);
-
+			//this is retarded but idk how to fix
 			if (_MeshProperties[index] != 0)
 			{
 				InterlockedAdd(_Counter[0], 1);
 				_MeshProperties[index] |= 1U << 12;
 				_MeshProperties[index] |= 1U << 13;
 
-				while (_EdgeTable[index] == 0)
+				while (((_EdgeTable[index] >> 4) & 1U) == 0U)
 				{
 					index -= ((width * height) + width + 1);
 					_MeshProperties[index] &= ~(1U << 12);
@@ -519,19 +485,143 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 			{
 				_MeshProperties[index] &= ~(1U << 12);
 			}
-		}
+
+			while (((_EdgeTable[index] >> 4) & 1U) == 0U)
+			{
+				index -= ((width * height) + width + 1);
+
+				if (_MeshProperties[index] != 0)
+				{
+					InterlockedAdd(_Counter[0], 1);
+					_MeshProperties[index] |= 1U << 12;
+					_MeshProperties[index] |= 1U << 13;
+
+					while (((_EdgeTable[index] >> 4) & 1U) == 0U)
+					{
+						index -= ((width * height) + width + 1);
+						_MeshProperties[index] &= ~(1U << 12);
+						_MeshProperties[index] |= 1U << 13;
+					}
+				}
+				else
+				{
+					_MeshProperties[index] &= ~(1U << 12);
+				}
+			}
 		}
 		else
 		{
-			while (_EdgeTable[index] == 0)
+			if (skip)
 			{
-				index -= ((width * height) + width + 1);
-				_MeshProperties[index] &= ~(1U << 12);
-				_MeshProperties[index] |= 1U << 13;
+				while (((_EdgeTable[index] >> 4) & 1U) == 0U)
+				{
+					index -= ((width * height) + width + 1);
+					_MeshProperties[index] &= ~(1U << 12);
+					_MeshProperties[index] |= 1U << 13;
+				}
 			}
 		}
-		*/
+	}
+}
 
+[numthreads(1024, 1, 1)]
+void StupidCull2(uint3 id: SV_DispatchThreadID)
+{
+	if (((_EdgeTable[id.x] >> 5) & 1U) == 1U)
+	{
+		uint index = id.x;
+		bool visibilityCheck = 0;
+		bool skip = 1;
+		switch (_EdgeTable[index] & 0x7)
+		{
+		case 0:
+			skip = 0;
+			break;
+		case 1:
+			skip = 0;
+			break;
+		case 2:
+			skip = 0;
+			break;
+		case 3:
+			skip = 0;
+			break;
+		case 4:
+			if (((_TopRightChunk[_EdgeTable[id.x] >> 6] >> 13) & 1U) == 0)
+			{
+				visibilityCheck = 1;
+			}
+			break;
+		case 5:
+			if (((_MiddleTopChunk[_EdgeTable[id.x] >> 6] >> 13) & 1U) == 0)
+			{
+				visibilityCheck = 1;
+			}
+			break;
+		case 6:
+			if (((_MiddleRightChunk[_EdgeTable[id.x] >> 6] >> 13) & 1U) == 0)
+			{
+				visibilityCheck = 1;
+			}
+			break;
+		}
+
+		if (visibilityCheck)
+		{
+			//this is retarded but idk how to fix
+			if (_MeshProperties[index] != 0)
+			{
+				InterlockedAdd(_Counter[0], 1);
+				_MeshProperties[index] |= 1U << 12;
+				_MeshProperties[index] |= 1U << 13;
+
+				while (((_EdgeTable[index] >> 4) & 1U) == 0U)
+				{
+					index -= ((width * height) + width + 1);
+					_MeshProperties[index] &= ~(1U << 12);
+					_MeshProperties[index] |= 1U << 13;
+				}
+			}
+			else
+			{
+				_MeshProperties[index] &= ~(1U << 12);
+			}
+
+			while (((_EdgeTable[index] >> 4) & 1U) == 0U)
+			{
+				index -= ((width * height) + width + 1);
+
+				if (_MeshProperties[index] != 0)
+				{
+					InterlockedAdd(_Counter[0], 1);
+					_MeshProperties[index] |= 1U << 12;
+					_MeshProperties[index] |= 1U << 13;
+
+					while (((_EdgeTable[index] >> 4) & 1U) == 0U)
+					{
+						index -= ((width * height) + width + 1);
+						_MeshProperties[index] &= ~(1U << 12);
+						_MeshProperties[index] |= 1U << 13;
+					}
+				}
+				else
+				{
+					_MeshProperties[index] &= ~(1U << 12);
+				}
+			}
+		}
+		else
+		{
+			if (skip)
+			{
+				while (((_EdgeTable[index] >> 4) & 1U) == 0U)
+				{
+					index -= ((width * height) + width + 1);
+					_MeshProperties[index] &= ~(1U << 12);
+					_MeshProperties[index] |= 1U << 13;
+				}
+			}
+		}
 	}
 }
 

@@ -334,6 +334,7 @@ MonoBehaviour:
   texInit:
   - {fileID: 2800000, guid: dbde667d3061b164db44720b1971c548, type: 3}
   - {fileID: 2800000, guid: 228f26ff88c247f4e811e3e914fd7173, type: 3}
+  render: 1
 --- !u!4 &1024011391
 Transform:
   m_ObjectHideFlags: 0
