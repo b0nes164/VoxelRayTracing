@@ -38,8 +38,6 @@ uint xOffset;
 uint yOffset;
 uint zOffset;
 
-float test = 4.0;
-
 //
 // Description : Array and textureless GLSL 2D/3D/4D simplex 
 //               noise functions.
@@ -164,6 +162,92 @@ float noise(float3 x)
 			lerp(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
 }
 
+uint edgeChecks(bool isTop, bool isLeft, bool isRight, uint threadID, uint3 worldPos)
+{
+	uint edgeCase = 0;
+
+	if (isLeft)
+	{
+		if (isTop)
+		{
+			if (isRight)
+			{
+				//this is the single index for the leading corner of the chunk
+				edgeCase = 0;
+
+				//store the adjacent index for this case
+				edgeCase |= (threadID - (cubeCount - 1)) << 5;
+			}
+			else
+			{
+				//Top Left
+				edgeCase = 1;
+
+				edgeCase |= (threadID - (cubeCount - (width + 1))) << 5;
+			}
+		}
+		else
+		{
+			if (isRight)
+			{
+				//Diagonal Middle
+				edgeCase = 2;
+
+				edgeCase |= (threadID - (cubeCount - ((width * height) + 1))) << 5;
+			}
+			else
+			{
+				//Middle Left
+				edgeCase = 3;
+
+				edgeCase |= (threadID - (cubeCount - ((width * height) + width))) << 5;
+			}
+		}
+
+		edgeCase |= 1U << 4;
+	}
+	else
+	{
+		if (isTop)
+		{
+			if (isRight)
+			{
+				//Top Right
+				edgeCase = 4;
+
+				edgeCase |= (threadID + 1) << 5;
+			}
+			else
+			{
+				//Top Middle
+				edgeCase = 5;
+
+				edgeCase |= (threadID + width + 1) << 5;
+			}
+			edgeCase |= 1U << 4;
+		}
+		else
+		{
+			if (isRight)
+			{
+				//Middle Right
+				edgeCase = 6;
+
+				edgeCase |= (threadID + (width * height) + 1) << 5;
+
+				edgeCase |= 1U << 4;
+			}
+		}
+	}
+
+	if (worldPos.x == 0 || worldPos.y == 0 || worldPos.z == 0)
+	{
+		//trailing face
+		edgeCase |= 1U << 3;
+	}
+
+	return edgeCase;
+}
 
 [numthreads(1, 1, 1)]
 void ZeroCounter(uint3 id : SV_DispatchThreadID)
@@ -171,38 +255,20 @@ void ZeroCounter(uint3 id : SV_DispatchThreadID)
 	_Counter[id.x] = 0;
 }
 
-//round for conversion issue
 [numthreads(8, 1, 1)]
 void InitializeChunks(uint3 id : SV_DispatchThreadID)
 {
-	bool isTop = 0;
-	bool isLeft = 0;
-	bool isRight = 0;
+	//Wipe the table
+	_ChunkEdgeTable[id.x] = 0;
+	//round for conversion issue
+	uint xCoord = round(floor(id.x / (yChunks * zChunks)));
+	uint yCoord = round(floor(id.x / zChunks) % yChunks);
+	uint zCoord = round(id.x % zChunks);
 
-	if(uint(round(floor(id.x / (yChunks * zChunks)))) == xChunks - 1)
-	{
-		isLeft = 1;
-	}
-	if(uint(round(floor(id.x / zChunks) % yChunks)) == yChunks - 1)
-	{
-		isTop = 1;
-	}
-	if(uint(round(id.x % zChunks)) == zChunks - 1)
-	{
-		isRight = 1;
-	}
-
-	if (isLeft || isTop || isRight)
-	{
-		_ChunkEdgeTable[id.x] = 1;
-	}
-	else
-	{
-		_ChunkEdgeTable[id.x] = 0;
-	}
+	//this could be skipped with the ifdef not sure how to impliment though
+	_ChunkEdgeTable[id.x] = edgeChecks((yCoord == yChunks - 1), (xCoord == xChunks - 1), (zCoord == zChunks - 1), id.x, uint3(xCoord, yCoord, zCoord));	
 }
 
-//**************************************************************************************************************************************************************
 [numthreads(1024, 1, 1)]
 void InitializeDummyChunk(uint3 id : SV_DispatchThreadID)
 {
@@ -214,144 +280,11 @@ void InitializeCubes(uint3 id : SV_DispatchThreadID)
 {
 	//Ensure the table is wiped
 	_EdgeTable[id.x] = 0;
-
-	bool isTop = 0;
-	bool isLeft = 0;
-	bool isRight = 0;
-
+	//fill the reference table
 	_ChunkTable[id.x] = uint3(round(floor(id.x / (height * width))), round(floor(id.x / width) % height), round(id.x % width));
-
-	if (_ChunkTable[id.x].x == (length - 1))
-	{
-		isLeft = 1;
-	}
-	if (_ChunkTable[id.x].y == (height - 1))
-	{
-		isTop = 1;
-	}
-	if (_ChunkTable[id.x].z == (width - 1))
-	{
-		isRight = 1;
-	}
-	
-	if (isLeft)
-	{
-		if (isTop)
-		{
-			if (isRight)
-			{
-				//this is the single index for the leading corner of the chunk
-				_EdgeTable[id.x] = 0;
-
-				//store the adjacent index for this case
-				_EdgeTable[id.x] |= (id.x - (cubeCount - 1)) << 5;
-			}
-			else
-			{
-				//Top Left
-				_EdgeTable[id.x] = 1;
-
-				_EdgeTable[id.x] |= (id.x - (cubeCount - (width + 1) ) ) << 5;
-			}
-		}
-		else
-		{
-			if (isRight)
-			{
-				//Diagonal Middle
-				_EdgeTable[id.x] = 2;
-
-				_EdgeTable[id.x] |= (id.x - (cubeCount - ( (width * height) + 1 ) )) << 5;
-			}
-			else
-			{
-				//Middle Left
-				_EdgeTable[id.x] = 3;
-
-				_EdgeTable[id.x] |= (id.x - (cubeCount - ( (width * height) + width ) )) << 5;
-			}
-		}
-
-		_EdgeTable[id.x] |= 1U << 4;
-	}
-	else
-	{
-		if (isTop)
-		{
-			if (isRight)
-			{
-				//Top Right
-				_EdgeTable[id.x] = 4;
-
-				_EdgeTable[id.x] |= (id.x + 1) << 5;
-			}
-			else
-			{
-				//Top Middle
-				_EdgeTable[id.x] = 5;
-
-				_EdgeTable[id.x] |= (id.x + width + 1) << 5;
-			}
-			_EdgeTable[id.x] |= 1U << 4;
-		}
-		else
-		{
-			if (isRight)
-			{
-				//Middle Right
-				_EdgeTable[id.x] = 6;
-
-				_EdgeTable[id.x] |= (id.x + (width * height) + 1) << 5;
-
-				_EdgeTable[id.x] |= 1U << 4;
-			}
-		}
-	}
-
-	if (_ChunkTable[id.x].x == 0 || _ChunkTable[id.x].y == 0 || _ChunkTable[id.x].z == 0)
-	{
-		//trailing face
-		_EdgeTable[id.x] |= 1U << 3;
-	}
-	
+	//call the edgeCheck method
+	_EdgeTable[id.x] = edgeChecks((_ChunkTable[id.x].y == (height - 1)), (_ChunkTable[id.x].x == (length - 1)), (_ChunkTable[id.x].z == (width - 1)), id.x, _ChunkTable[id.x]);
 }
-
-//this is dispatch is now dead
-/*
-[numthreads(1024,1,1)]
-void InitializeAdjacentChunkIndexes(uint3 id : SV_DispatchThreadID)
-{
-	if (((_EdgeTable[id.x] >> 4) & 1U) == 1U)
-	{
-		uint edgeCase = (_EdgeTable[id.x] & 0x7);
-		[forcecase] switch (edgeCase)
-		{
-		case 0:
-			_AdjacentChunkIndexesTemp.Append(id.x - cubeCount);
-			break;
-		case 1:
-			_AdjacentChunkIndexesTemp.Append(id.x - (cubeCount - width - 1));
-			break;
-		case 2:
-			_AdjacentChunkIndexesTemp.Append(id.x - (cubeCount - width * height - 1));
-			break;
-		case 3:
-			_AdjacentChunkIndexesTemp.Append(id.x - (cubeCount - width * height - width));
-			break;
-		case 4:
-			_AdjacentChunkIndexesTemp.Append(id.x + 1);
-			break;
-		case 5:
-			_AdjacentChunkIndexesTemp.Append(id.x + width);
-			break;
-		case 6:
-			_AdjacentChunkIndexesTemp.Append(id.x + width * height + 1);
-			break;
-		}
-
-	}
-}
-*/
 
 [numthreads(1024, 1, 1)]
 void Noise(uint3 id : SV_DispatchThreadID)
