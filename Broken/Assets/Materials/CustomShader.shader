@@ -34,16 +34,16 @@ Shader "Unlit/CustomShader"
                         float4 pos = mul(
                             
                             float4x4
-                            (   1, 0, 0, _ChunkTable[_RenderProperties[instanceID]].x + xChunk,
-                                0, 1, 0, _ChunkTable[_RenderProperties[instanceID]].y + yChunk,
-                                0, 0, 1, _ChunkTable[_RenderProperties[instanceID]].z + zChunk,
+                            (   1, 0, 0, _ChunkTable[_RenderProperties[instanceID] & 0x7FFF].x + xChunk,
+                                0, 1, 0, _ChunkTable[_RenderProperties[instanceID] & 0x7FFF].y + yChunk,
+                                0, 0, 1, _ChunkTable[_RenderProperties[instanceID] & 0x7FFF].z + zChunk,
                                 0, 0, 0, 1
                             ),
                             i.vertex);
 
                         o.vertex = UnityObjectToClipPos(pos);
                         o.uv.xy = i.uv.xy;
-                        o.uv.z = 1;
+                        o.uv.z = _RenderProperties[instanceID] >> 16;
                         return o;
                     }
 
