@@ -2,29 +2,15 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-public class Main : MonoBehaviour
+public class WorldGeneration
 {
-    [SerializeField]
-    private ComputeShader computeShader;
-
-    [SerializeField]
-    private GameObject prefab;
-
-    [SerializeField]
-    private Material material;
-
-    [SerializeField]
-    private Texture2D[] texInit;
-
-    [SerializeField]
     private bool render;
-
-    [SerializeField]
+    private ComputeShader computeShader;
     private bool chunkInfo;
 
-    private static readonly int xChunks = 3;
-    private static readonly int yChunks = 3;
-    private static readonly int zChunks = 3;
+    private static readonly int xChunks = 5;
+    private static readonly int yChunks = 1;
+    private static readonly int zChunks = 5;
     private static int chunkCount = xChunks * yChunks * zChunks;
 
     private static int length = 32;
@@ -44,7 +30,7 @@ public class Main : MonoBehaviour
     private ComputeBuffer[] mainBuffers = new ComputeBuffer[chunkCount];
     private ComputeBuffer[] renderBuffers = new ComputeBuffer[chunkCount];
     private ComputeBuffer countBuffer;
-    private int[] count = new int[1];
+    private int[][] count = new int[chunkCount][];
     private MaterialPropertyBlock[] propertyBlocks = new MaterialPropertyBlock[chunkCount];
 
     private int[] xOffset = new int[chunkCount];
@@ -55,16 +41,15 @@ public class Main : MonoBehaviour
     private Mesh mesh;
     private Texture2DArray texture;
 
-    uint[] test;
-
-    void Start()
+    public WorldGeneration(bool _render, bool _chunkInfo, ComputeShader _computeShader)
     {
+        render = _render;
+        chunkInfo = _chunkInfo;
+        computeShader = _computeShader;
         InitializeShaderValues();
-        GenerateWorld();
-        Generate();
     }
 
-    public void InitializeShaderValues()
+    private void InitializeShaderValues()
     {
         computeShader.SetInt("xChunks", xChunks);
         computeShader.SetInt("yChunks", yChunks);
@@ -74,6 +59,11 @@ public class Main : MonoBehaviour
         computeShader.SetInt("width", width);
         computeShader.SetInt("stepIndex", step);
         computeShader.SetInt("cubeCount", cubeCount);
+
+        for (int i = 0; i < count.Length; i++)
+        {
+            count[i] = new int[1];
+        }
 
         int initilializeChunkKernel = computeShader.FindKernel("InitializeChunks");
         chunkEdgeBuffer = new ComputeBuffer(chunkCount, sizeof(uint));
@@ -121,10 +111,8 @@ public class Main : MonoBehaviour
         }
     }
 
-    public void Generate()
+    public void GenerateMeshProperties()
     {
-        bounds = new Bounds(transform.position, Vector3.one * 10000);
-
         if (render)
         {
             for (int i = chunkCount; i > 0; i--)
@@ -249,29 +237,7 @@ public class Main : MonoBehaviour
 
                 computeShader.Dispatch(stupidCullKernel, dispatchGroups, 1, 1);
                 computeShader.Dispatch(stupidCullTwoKernel, dispatchGroups, 1, 1);
-                countBuffer.GetData(count);
-
-                if (count[0] != 0)
-                {
-                    int renderKernel = computeShader.FindKernel("PopulateRender");
-                    renderBuffers[index] = new ComputeBuffer(count[0], sizeof(uint), ComputeBufferType.Append);
-                    renderBuffers[index].SetCounterValue(0);
-                    computeShader.SetBuffer(renderKernel, "_MeshProperties", mainBuffers[index]);
-                    computeShader.SetBuffer(renderKernel, "_RenderProperties", renderBuffers[index]);
-                    computeShader.Dispatch(renderKernel, dispatchGroups, 1, 1);
-                }
-
-                if (chunkInfo)
-                {
-                    Debug.Log("Chunk: " + index + ", " + count[0]);
-                }
-
-
-                propertyBlocks[index] = new MaterialPropertyBlock();
-                propertyBlocks[index].SetBuffer("_RenderProperties", renderBuffers[index]);
-                propertyBlocks[index].SetInt("xChunk", xOffset[index]);
-                propertyBlocks[index].SetInt("yChunk", yOffset[index]);
-                propertyBlocks[index].SetInt("zChunk", zOffset[index]);
+                countBuffer.GetData(count[index]);
                 countBuffer.Release();
             }
         }
@@ -289,36 +255,113 @@ public class Main : MonoBehaviour
                 computeShader.SetBuffer(testKernel, "_Counter", countBuffer);
                 computeShader.SetBuffer(testKernel, "_ChunkTable", interiorChunkBuffer);
                 computeShader.Dispatch(testKernel, dispatchGroups, 1, 1);
-                countBuffer.GetData(count);
-
-                if (count[0] != 0)
-                {
-                    int renderKernel = computeShader.FindKernel("PopulateRender");
-                    renderBuffers[i] = new ComputeBuffer(count[0], sizeof(uint), ComputeBufferType.Append);
-                    renderBuffers[i].SetCounterValue(0);
-                    computeShader.SetBuffer(renderKernel, "_MeshProperties", mainBuffers[i]);
-                    computeShader.SetBuffer(renderKernel, "_RenderProperties", renderBuffers[i]);
-                    computeShader.Dispatch(renderKernel, dispatchGroups, 1, 1);
-                }
-
-                propertyBlocks[i] = new MaterialPropertyBlock();
-                propertyBlocks[i].SetBuffer("_RenderProperties", renderBuffers[i]);
-                propertyBlocks[i].SetInt("xChunk", xOffset[i]);
-                propertyBlocks[i].SetInt("yChunk", yOffset[i]);
-                propertyBlocks[i].SetInt("zChunk", zOffset[i]);
+                countBuffer.GetData(count[i]);
                 countBuffer.Release();
             }
         }
-        Debug.Log(Time.realtimeSinceStartup);
 
-        mesh = GetMesh();
-        InitializeTexture();
-        material.SetBuffer("_ChunkTable", interiorChunkBuffer);
-        material.SetTexture("_MyArr", texture);
+        Debug.Log(Time.realtimeSinceStartup);
+    }
+
+    public void GenerateRenderProperties()
+    {
+        for (int i = 0; i < chunkCount; i++)
+        {
+            if (count[i][0] != 0)
+            {
+                int renderKernel = computeShader.FindKernel("PopulateRender");
+                renderBuffers[i] = new ComputeBuffer(count[i][0], sizeof(uint), ComputeBufferType.Append);
+                renderBuffers[i].SetCounterValue(0);
+                computeShader.SetBuffer(renderKernel, "_MeshProperties", mainBuffers[i]);
+                computeShader.SetBuffer(renderKernel, "_RenderProperties", renderBuffers[i]);
+                computeShader.Dispatch(renderKernel, dispatchGroups, 1, 1);
+            }
+
+            if (chunkInfo)
+            {
+                Debug.Log("Chunk: " + i + ", " + count[0]);
+            }
+
+            propertyBlocks[i] = new MaterialPropertyBlock();
+            propertyBlocks[i].SetBuffer("_RenderProperties", renderBuffers[i]);
+            propertyBlocks[i].SetInt("xChunk", xOffset[i]);
+            propertyBlocks[i].SetInt("yChunk", yOffset[i]);
+            propertyBlocks[i].SetInt("zChunk", zOffset[i]);
+        }   
+    }
+
+    public void HeightRendering(int cross)
+    {
+        computeShader.SetInt("crossHeight", cross);
+
+        for (int i = chunkCount; i > 0; i--)
+        {
+            int index = i - 1;
+            int zeroCountBufferKernel = computeShader.FindKernel("ZeroCounter");
+            countBuffer = new ComputeBuffer(1, sizeof(int));
+            computeShader.SetBuffer(zeroCountBufferKernel, "_Counter", countBuffer);
+            computeShader.Dispatch(zeroCountBufferKernel, 1, 1, 1);
+
+            int coolKernel = computeShader.FindKernel("CoolCull");
+            computeShader.SetBuffer(coolKernel, "_MeshProperties", mainBuffers[index]);
+            computeShader.SetBuffer(coolKernel, "_Counter", countBuffer);
+            computeShader.SetBuffer(coolKernel, "_EdgeTable", edgeBuffer);
+            computeShader.SetBuffer(coolKernel, "_ChunkTable", interiorChunkBuffer);
+            computeShader.Dispatch(coolKernel, dispatchGroups, 1, 1);
+            countBuffer.GetData(count[index]);
+            countBuffer.Release();
+        }
+
+        Debug.Log(Time.realtimeSinceStartup);
+    }
+
+    public ref MaterialPropertyBlock[] GetPropertyBlocks()
+    {
+        return ref propertyBlocks;
+    }
+
+    public ref ComputeBuffer GetInteriorChunkBuffer()
+    {
+        return ref interiorChunkBuffer;
+    }
+
+    public ref ComputeBuffer[] GetRenderBuffers()
+    {
+        return ref renderBuffers;
+    }
+
+    public void ReleaseRenderBuffers()
+    {
+        foreach (ComputeBuffer c in renderBuffers)
+        {
+            c.Release();
+        }
+    }
+
+    public void ReleaseBuffers()
+    {
+        interiorChunkBuffer.Release();
+        edgeBuffer.Release();
+
+        foreach (ComputeBuffer c in dummyBuffers)
+        {
+            c.Release();
+        }
+
+        for (int i = 0; i < chunkCount; i++)
+        {
+            mainBuffers[i].Release();
+
+            if (renderBuffers[i] != null)
+            {
+                renderBuffers[i].Release();
+            }
+        }
     }
 
 
-    void Update()
+    /*
+     void Update()
     {
         for (int i = 0; i < chunkCount; i++)
         {
@@ -367,4 +410,7 @@ public class Main : MonoBehaviour
 
         texture.Apply();
     }
+     */
+
+
 }

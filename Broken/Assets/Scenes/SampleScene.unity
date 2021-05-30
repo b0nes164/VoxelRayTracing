@@ -253,7 +253,7 @@ Camera:
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_BackGroundColor: {r: 0, g: 1, b: 0.1221683, a: 1}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -293,13 +293,13 @@ Transform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963194225}
-  m_LocalRotation: {x: -0.120742545, y: 0.8754522, z: -0.28445166, w: -0.37160733}
+  m_LocalRotation: {x: -0.11875374, y: 0.8780252, z: -0.28528765, w: -0.36548644}
   m_LocalPosition: {x: 200, y: 200, z: 200}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
   m_RootOrder: 0
-  m_LocalEulerAnglesHint: {x: 36, y: 226, z: 0}
+  m_LocalEulerAnglesHint: {x: 36, y: 225.2, z: 0}
 --- !u!114 &963194229
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -342,17 +342,22 @@ MonoBehaviour:
   m_GameObject: {fileID: 1024011389}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6d7393f4bc9e0ed49bf7389b08484186, type: 3}
+  m_Script: {fileID: 11500000, guid: 282238718dc96b9469eba90b0736875c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  computeShader: {fileID: 7200000, guid: 3701dede8a14e7c40abec783bc884acf, type: 3}
-  prefab: {fileID: 5822745854383835123, guid: e5568392da12f6f4eb4c3b694fb1161a, type: 3}
+  range: 1000
   material: {fileID: 2100000, guid: 6404178be1fc6ab40b1e5ceea8d03302, type: 2}
-  texInit:
+  texture:
   - {fileID: 2800000, guid: dbde667d3061b164db44720b1971c548, type: 3}
   - {fileID: 2800000, guid: 26442db37f0f8f144ad3c647796bdf45, type: 3}
+  cameraPos: {fileID: 963194228}
+  compute: {fileID: 7200000, guid: 3701dede8a14e7c40abec783bc884acf, type: 3}
+  prefab: {fileID: 5822745854383835123, guid: e5568392da12f6f4eb4c3b694fb1161a, type: 3}
+  renderMethod: 0
   render: 1
   chunkInfo: 0
+  cross: 10
+  halfMesh: 0
 --- !u!4 &1024011391
 Transform:
   m_ObjectHideFlags: 0
