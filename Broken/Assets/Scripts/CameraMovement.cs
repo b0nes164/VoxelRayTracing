@@ -15,12 +15,13 @@ public class CameraMovement : MonoBehaviour
     [SerializeField]
     private float zoomSense;
 
-    [SerializeField]
+    /*
+     [SerializeField]
     private Text text;
+     */
 
     private float frameRate;
     private float time;
-    private string debugText;
 
     void Update()
     {

@@ -35,6 +35,9 @@ public class RenderingManager : MonoBehaviour
     [SerializeField]
     private bool halfMesh;
 
+    [SerializeField]
+    private Text text;
+
 
     private Texture2DArray textureA;
     private Mesh mesh;
@@ -44,8 +47,9 @@ public class RenderingManager : MonoBehaviour
     private ComputeBuffer[] renderBuffers;
     private ComputeBuffer interiorChunkBuffer;
     private WorldGeneration worldGen;
+    private bool[] nullChecks;
 
-    private int cross = 10;
+    private int cross = 0;
 
     private void Start()
     {
@@ -53,6 +57,7 @@ public class RenderingManager : MonoBehaviour
 
         worldGen = new WorldGeneration(render, chunkInfo, compute);
         worldGen.GenerateWorld();
+        nullChecks = worldGen.GetNullChecks();
 
         if (renderMethod)
         {
@@ -62,8 +67,6 @@ public class RenderingManager : MonoBehaviour
         {
             worldGen.HeightRendering(cross);
         }
-
-        worldGen.GenerateRenderProperties();
 
         propertyBlocks = worldGen.GetPropertyBlocks();
         renderBuffers = worldGen.GetRenderBuffers();
@@ -89,27 +92,27 @@ public class RenderingManager : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.PageDown))
         {
-            cross = Mathf.Clamp(cross -= 1, 1, 1000);
+            cross = Mathf.Clamp(cross -= 1, 0, 64);
             worldGen.ReleaseRenderBuffers();
             worldGen.HeightRendering(cross);
-            worldGen.GenerateRenderProperties();
         }
 
         if (Input.GetKeyDown(KeyCode.PageUp))
         {
-            cross = Mathf.Clamp(cross += 1, 1, 32);
+            cross = Mathf.Clamp(cross += 1, 0, 64);
             worldGen.ReleaseRenderBuffers();
             worldGen.HeightRendering(cross);
-            worldGen.GenerateRenderProperties();
         }
 
         for (int i = 0; i < renderBuffers.Length; i++)
         {
-            if (renderBuffers[i] != null)
+            if (nullChecks[i])
             {
                 Graphics.DrawMeshInstancedProcedural(mesh, 0, material, bounds, renderBuffers[i].count, propertyBlocks[i]);
             }
         }
+
+        text.text = cross + "";
     }
 
     private void OnDisable()

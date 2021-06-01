@@ -1,5 +1,5 @@
 #pragma kernel ZeroCounter
-#pragma kernel InitializeChunks
+#pragma kernel ZeroMeshFacing
 #pragma kernel InitializeDummyChunk
 #pragma kernel InitializeCubes
 #pragma kernel Noise
@@ -9,8 +9,6 @@
 #pragma kernel StupidCull2
 #pragma kernel CoolCull
 
-RWStructuredBuffer<float> _TestBuffer;
-RWStructuredBuffer<uint> _TestBufferTwo;
 RWStructuredBuffer<uint> _ChunkEdgeTable;
 RWStructuredBuffer<uint> _DummyChunk;
 RWStructuredBuffer<uint> _EdgeTable;
@@ -32,9 +30,6 @@ uint cubeCount;
 uint length;
 uint height;
 uint width;
-uint xChunks;
-uint yChunks;
-uint zChunks;
 uint xOffset;
 uint yOffset;
 uint zOffset;
@@ -270,18 +265,10 @@ void ZeroCounter(uint3 id : SV_DispatchThreadID)
 	_Counter[id.x] = 0;
 }
 
-[numthreads(8, 1, 1)]
-void InitializeChunks(uint3 id : SV_DispatchThreadID)
+[numthreads(1024, 1, 1)]
+void ZeroMeshFacing(uint3 id : SV_DispatchThreadID)
 {
-	//Wipe the table
-	_ChunkEdgeTable[id.x] = 0;
-	//round for conversion issue
-	uint xCoord = round(floor(id.x / (yChunks * zChunks)));
-	uint yCoord = round(floor(id.x / zChunks) % yChunks);
-	uint zCoord = round(id.x % zChunks);
-
-	//this could be skipped with the ifdef not sure how to impliment though
-	_ChunkEdgeTable[id.x] = edgeChecks((yCoord == yChunks - 1), (xCoord == xChunks - 1), (zCoord == zChunks - 1), id.x, uint3(xCoord, yCoord, zCoord));	
+	_MeshProperties[id.x] &= ~(1U << 12);
 }
 
 [numthreads(1024, 1, 1)]
