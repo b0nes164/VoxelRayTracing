@@ -49,7 +49,7 @@ public class RenderingManager : MonoBehaviour
     private WorldGeneration worldGen;
     private bool[] nullChecks;
 
-    private int cross = 0;
+    private int cross = 5;
 
     private void Start()
     {
@@ -92,14 +92,14 @@ public class RenderingManager : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.PageDown))
         {
-            cross = Mathf.Clamp(cross -= 1, 0, 64);
+            cross = Mathf.Clamp(cross -= 1, 1, 64);
             worldGen.ReleaseRenderBuffers();
             worldGen.HeightRendering(cross);
         }
 
         if (Input.GetKeyDown(KeyCode.PageUp))
         {
-            cross = Mathf.Clamp(cross += 1, 0, 64);
+            cross = Mathf.Clamp(cross += 1, 1, 64);
             worldGen.ReleaseRenderBuffers();
             worldGen.HeightRendering(cross);
         }
