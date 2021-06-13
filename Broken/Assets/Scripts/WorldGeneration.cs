@@ -57,22 +57,27 @@ public class WorldGeneration
 
     private void InitializeShaderValues()
     {
+        computeShader.SetInt("stepIndex", step);
+        computeShader.SetInt("cubeCount", cubeCount);
+        computeShader.SetInt("height", height);
         for (int i = 0; i < chunkCount; i++)
         {
             xOffset[i] = Mathf.FloorToInt(i / (yChunks * zChunks)) * length;
             yOffset[i] = (Mathf.FloorToInt(i / (zChunks)) % yChunks) * height;
             zOffset[i] = (i % zChunks) * width;
 
-            visibilityBuffers[i] = new ComputeBuffer(cubeCount, sizeof(uint));
+            
 
             count[i] = new int[1];
             renderCalcCheck[i] = new bool[height * yChunks];
 
             nullChecks[i] = false;
-        }
 
-        computeShader.SetInt("stepIndex", step);
-        computeShader.SetInt("cubeCount", cubeCount);
+            int initializeVisTableKernel = computeShader.FindKernel("InitializeChunkVisibilityTable");
+            visibilityBuffers[i] = new ComputeBuffer(leadingEdgeCount, sizeof(uint));
+            computeShader.SetBuffer(initializeVisTableKernel, "_ChunkVisibilityTables", visibilityBuffers[i]);
+            computeShader.Dispatch(initializeVisTableKernel, Mathf.CeilToInt(leadingEdgeCount / 1024f), 1, 1);
+        }
 
         computeShader.SetInt("length", xChunks);
         computeShader.SetInt("height", yChunks);
@@ -111,20 +116,10 @@ public class WorldGeneration
         computeShader.Dispatch(initializeRaysKernel, dispatchGroups, 1, 1);
         tempBuffer.Release();
 
-        /*
-         test = new uint[cubeCount];
-        edgeBuffer.GetData(test);
-        for (int i = 0; i < test.Length; i++)
-        {
-            Debug.Log(test[i] >> 17);
-        }
-        
-         */
-
         for (int i = 0; i < dummyBuffers.Length; i++)
         {
             int initializeDummyKernel = computeShader.FindKernel("InitializeDummyChunk");
-            dummyBuffers[i] = new ComputeBuffer(leadingEdgeCount, sizeof(uint));
+            dummyBuffers[i] = new ComputeBuffer(cubeCount, sizeof(uint) * 2);
             computeShader.SetBuffer(initializeDummyKernel, "_DummyChunk", dummyBuffers[i]);
             computeShader.Dispatch(initializeDummyKernel, dispatchGroups, 1, 1);
         }
@@ -144,6 +139,12 @@ public class WorldGeneration
             computeShader.SetBuffer(noiseKernel, "_MeshProperties", mainBuffers[i]);
             computeShader.Dispatch(noiseKernel, dispatchGroups, 1, 1);
         }
+    }
+
+    public void GenerateVisTable(int index)
+    {
+        int chunkVisTableKernel = computeShader.FindKernel("ChunkVisibilityTable");
+
     }
 
     public void GenerateMeshProperties()
@@ -323,7 +324,7 @@ public class WorldGeneration
 
         if (chunkInfo)
         {
-            Debug.Log("Chunk: " + index + ", " + count[0]);
+            Debug.Log("Chunk: " + index + ", " + count[index][0]);
         }
 
         propertyBlocks[index] = new MaterialPropertyBlock();
@@ -377,17 +378,17 @@ public class WorldGeneration
 
         if (topEdge)
         {
+            computeShader.SetBool("topEdge", topEdge);
+
             int stupidCullKernel = computeShader.FindKernel("StupidCull");
             computeShader.SetBuffer(stupidCullKernel, "_MeshProperties", mainBuffers[index]);
             computeShader.SetBuffer(stupidCullKernel, "_Counter", countBuffer);
             computeShader.SetBuffer(stupidCullKernel, "_EdgeTable", edgeBuffer);
-            computeShader.SetBuffer(stupidCullKernel, "_ChunkVisibilityTables", visibilityBuffers[index]);
 
             int stupidCullTwoKernel = computeShader.FindKernel("StupidCull2");
             computeShader.SetBuffer(stupidCullTwoKernel, "_MeshProperties", mainBuffers[index]);
             computeShader.SetBuffer(stupidCullTwoKernel, "_Counter", countBuffer);
             computeShader.SetBuffer(stupidCullTwoKernel, "_EdgeTable", edgeBuffer);
-            computeShader.SetBuffer(stupidCullTwoKernel, "_ChunkVisibilityTables", visibilityBuffers[index]);
 
             switch (chunkEdgeTable[index] & 0x7)
             {
@@ -418,7 +419,7 @@ public class WorldGeneration
                     computeShader.SetBuffer(stupidCullKernel, "_DiagonalTopChunk", dummyBuffers[0]);
                     computeShader.SetBuffer(stupidCullKernel, "_TopLeftChunk", dummyBuffers[1]);
                     computeShader.SetBuffer(stupidCullKernel, "_TopRightChunk", dummyBuffers[4]);
-                    computeShader.SetBuffer(stupidCullKernel, "_MiddleTopChunk", visibilityBuffers[index + zChunks]);
+                    computeShader.SetBuffer(stupidCullKernel, "_MiddleTopChunk", mainBuffers[index + zChunks]);
 
                     computeShader.SetBuffer(stupidCullTwoKernel, "_DiagonalMiddleChunk", dummyBuffers[2]);
                     computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleLeftChunk", dummyBuffers[3]);
@@ -428,12 +429,12 @@ public class WorldGeneration
                 case 3:
                     computeShader.SetBuffer(stupidCullKernel, "_DiagonalTopChunk", dummyBuffers[0]);
                     computeShader.SetBuffer(stupidCullKernel, "_TopLeftChunk", dummyBuffers[1]);
-                    computeShader.SetBuffer(stupidCullKernel, "_TopRightChunk", visibilityBuffers[index + zChunks + 1]);
-                    computeShader.SetBuffer(stupidCullKernel, "_MiddleTopChunk", visibilityBuffers[index + zChunks]);
+                    computeShader.SetBuffer(stupidCullKernel, "_TopRightChunk", mainBuffers[index + zChunks + 1]);
+                    computeShader.SetBuffer(stupidCullKernel, "_MiddleTopChunk", mainBuffers[index + zChunks]);
 
                     computeShader.SetBuffer(stupidCullTwoKernel, "_DiagonalMiddleChunk", dummyBuffers[2]);
                     computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleLeftChunk", dummyBuffers[3]);
-                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleRightChunk", visibilityBuffers[index + 1]);
+                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleRightChunk", mainBuffers[index + 1]);
                     break;
                 //Top Right
                 case 4:
@@ -443,7 +444,7 @@ public class WorldGeneration
                     computeShader.SetBuffer(stupidCullKernel, "_MiddleTopChunk", dummyBuffers[5]);
 
                     computeShader.SetBuffer(stupidCullTwoKernel, "_DiagonalMiddleChunk", dummyBuffers[2]);
-                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleLeftChunk", visibilityBuffers[index + (zChunks * yChunks)]);
+                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleLeftChunk", mainBuffers[index + (zChunks * yChunks)]);
                     computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleRightChunk", dummyBuffers[6]);
                     break;
                 //Top Middle
@@ -453,31 +454,31 @@ public class WorldGeneration
                     computeShader.SetBuffer(stupidCullKernel, "_TopRightChunk", dummyBuffers[4]);
                     computeShader.SetBuffer(stupidCullKernel, "_MiddleTopChunk", dummyBuffers[5]);
 
-                    computeShader.SetBuffer(stupidCullTwoKernel, "_DiagonalMiddleChunk", visibilityBuffers[index + (zChunks * yChunks) + 1]);
-                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleLeftChunk", visibilityBuffers[index + (zChunks * yChunks)]);
-                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleRightChunk", visibilityBuffers[index + 1]);
+                    computeShader.SetBuffer(stupidCullTwoKernel, "_DiagonalMiddleChunk", mainBuffers[index + (zChunks * yChunks) + 1]);
+                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleLeftChunk", mainBuffers[index + (zChunks * yChunks)]);
+                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleRightChunk", mainBuffers[index + 1]);
                     break;
                 //Middle right
                 case 6:
                     computeShader.SetBuffer(stupidCullKernel, "_DiagonalTopChunk", dummyBuffers[0]);
-                    computeShader.SetBuffer(stupidCullKernel, "_TopLeftChunk", visibilityBuffers[index + (zChunks * yChunks) + zChunks]);
+                    computeShader.SetBuffer(stupidCullKernel, "_TopLeftChunk", mainBuffers[index + (zChunks * yChunks) + zChunks]);
                     computeShader.SetBuffer(stupidCullKernel, "_TopRightChunk", dummyBuffers[4]);
-                    computeShader.SetBuffer(stupidCullKernel, "_MiddleTopChunk", visibilityBuffers[index + zChunks]);
+                    computeShader.SetBuffer(stupidCullKernel, "_MiddleTopChunk", mainBuffers[index + zChunks]);
 
                     computeShader.SetBuffer(stupidCullTwoKernel, "_DiagonalMiddleChunk", dummyBuffers[2]);
-                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleLeftChunk", visibilityBuffers[index + (zChunks * yChunks)]);
+                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleLeftChunk", mainBuffers[index + (zChunks * yChunks)]);
                     computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleRightChunk", dummyBuffers[6]);
                     break;
                 //inside
                 case 7:
-                    computeShader.SetBuffer(stupidCullKernel, "_DiagonalTopChunk", visibilityBuffers[index + (zChunks * yChunks) + zChunks + 1]);
-                    computeShader.SetBuffer(stupidCullKernel, "_TopLeftChunk", visibilityBuffers[index + (zChunks * yChunks) + zChunks]);
-                    computeShader.SetBuffer(stupidCullKernel, "_TopRightChunk", visibilityBuffers[index + zChunks + 1]);
-                    computeShader.SetBuffer(stupidCullKernel, "_MiddleTopChunk", visibilityBuffers[index + zChunks]);
+                    computeShader.SetBuffer(stupidCullKernel, "_DiagonalTopChunk", mainBuffers[index + (zChunks * yChunks) + zChunks + 1]);
+                    computeShader.SetBuffer(stupidCullKernel, "_TopLeftChunk", mainBuffers[index + (zChunks * yChunks) + zChunks]);
+                    computeShader.SetBuffer(stupidCullKernel, "_TopRightChunk", mainBuffers[index + zChunks + 1]);
+                    computeShader.SetBuffer(stupidCullKernel, "_MiddleTopChunk", mainBuffers[index + zChunks]);
 
-                    computeShader.SetBuffer(stupidCullTwoKernel, "_DiagonalMiddleChunk", visibilityBuffers[index + (zChunks * yChunks) + 1]);
-                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleLeftChunk", visibilityBuffers[index + (zChunks * yChunks)]);
-                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleRightChunk", visibilityBuffers[index + 1]);
+                    computeShader.SetBuffer(stupidCullTwoKernel, "_DiagonalMiddleChunk", mainBuffers[index + (zChunks * yChunks) + 1]);
+                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleLeftChunk", mainBuffers[index + (zChunks * yChunks)]);
+                    computeShader.SetBuffer(stupidCullTwoKernel, "_MiddleRightChunk", mainBuffers[index + 1]);
                     break;
                 default:
                     computeShader.SetBuffer(stupidCullKernel, "_DiagonalTopChunk", dummyBuffers[0]);
@@ -496,12 +497,13 @@ public class WorldGeneration
         }
         else
         {
+            computeShader.SetBool("topEdge", topEdge);
+
             int coolKernel = computeShader.FindKernel("CoolCull");
-            computeShader.SetBuffer(coolKernel, "_MeshProperties", visibilityBuffers[index]);
+            computeShader.SetBuffer(coolKernel, "_MeshProperties", mainBuffers[index]);
             computeShader.SetBuffer(coolKernel, "_Counter", countBuffer);
             computeShader.SetBuffer(coolKernel, "_EdgeTable", edgeBuffer);
             computeShader.SetBuffer(coolKernel, "_ChunkTable", cubeBuffer);
-            computeShader.SetBuffer(coolKernel, "_ChunkVisibilityTables", visibilityBuffers[index]);
 
             switch (chunkEdgeTable[index] & 0x7)
             {
@@ -515,7 +517,7 @@ public class WorldGeneration
                 case 1:
                     computeShader.SetBuffer(coolKernel, "_DiagonalMiddleChunk", dummyBuffers[0]);
                     computeShader.SetBuffer(coolKernel, "_MiddleLeftChunk", dummyBuffers[1]);
-                    computeShader.SetBuffer(coolKernel, "_MiddleRightChunk", visibilityBuffers[index + 1]);
+                    computeShader.SetBuffer(coolKernel, "_MiddleRightChunk", mainBuffers[index + 1]);
                     break;
                 //Diagonal Middle
                 case 2:
@@ -527,31 +529,31 @@ public class WorldGeneration
                 case 3:
                     computeShader.SetBuffer(coolKernel, "_DiagonalMiddleChunk", dummyBuffers[0]);
                     computeShader.SetBuffer(coolKernel, "_MiddleLeftChunk", dummyBuffers[1]);
-                    computeShader.SetBuffer(coolKernel, "_MiddleRightChunk", visibilityBuffers[index + 1]);
+                    computeShader.SetBuffer(coolKernel, "_MiddleRightChunk", mainBuffers[index + 1]);
                     break;
                 //Top Right
                 case 4:
                     computeShader.SetBuffer(coolKernel, "_DiagonalMiddleChunk", dummyBuffers[0]);
-                    computeShader.SetBuffer(coolKernel, "_MiddleLeftChunk", visibilityBuffers[index + (zChunks * yChunks)]);
+                    computeShader.SetBuffer(coolKernel, "_MiddleLeftChunk", mainBuffers[index + (zChunks * yChunks)]);
                     computeShader.SetBuffer(coolKernel, "_MiddleRightChunk", dummyBuffers[2]);
                     break;
                 //Top Middle
                 case 5:
-                    computeShader.SetBuffer(coolKernel, "_DiagonalMiddleChunk", visibilityBuffers[index + (zChunks * yChunks) + 1]);
-                    computeShader.SetBuffer(coolKernel, "_MiddleLeftChunk", visibilityBuffers[index + (zChunks * yChunks)]);
-                    computeShader.SetBuffer(coolKernel, "_MiddleRightChunk", visibilityBuffers[index + 1]);
+                    computeShader.SetBuffer(coolKernel, "_DiagonalMiddleChunk", mainBuffers[index + (zChunks * yChunks) + 1]);
+                    computeShader.SetBuffer(coolKernel, "_MiddleLeftChunk", mainBuffers[index + (zChunks * yChunks)]);
+                    computeShader.SetBuffer(coolKernel, "_MiddleRightChunk", mainBuffers[index + 1]);
                     break;
                 //Middle right
                 case 6:
                     computeShader.SetBuffer(coolKernel, "_DiagonalMiddleChunk", dummyBuffers[0]);
-                    computeShader.SetBuffer(coolKernel, "_MiddleLeftChunk", visibilityBuffers[index + (zChunks * yChunks)]);
+                    computeShader.SetBuffer(coolKernel, "_MiddleLeftChunk", mainBuffers[index + (zChunks * yChunks)]);
                     computeShader.SetBuffer(coolKernel, "_MiddleRightChunk", dummyBuffers[1]);
                     break;
                 //inside
                 case 7:
-                    computeShader.SetBuffer(coolKernel, "_DiagonalMiddleChunk", visibilityBuffers[index + (zChunks * yChunks) + 1]);
-                    computeShader.SetBuffer(coolKernel, "_MiddleLeftChunk", visibilityBuffers[index + (zChunks * yChunks)]);
-                    computeShader.SetBuffer(coolKernel, "_MiddleRightChunk", visibilityBuffers[index + 1]);
+                    computeShader.SetBuffer(coolKernel, "_DiagonalMiddleChunk", mainBuffers[index + (zChunks * yChunks) + 1]);
+                    computeShader.SetBuffer(coolKernel, "_MiddleLeftChunk", mainBuffers[index + (zChunks * yChunks)]);
+                    computeShader.SetBuffer(coolKernel, "_MiddleRightChunk", mainBuffers[index + 1]);
                     break;
                 default:
                     computeShader.SetBuffer(coolKernel, "_DiagonalMiddleChunk", dummyBuffers[0]);
