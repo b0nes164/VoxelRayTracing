@@ -153,12 +153,14 @@ public class WorldGeneration
         computeShader.SetBuffer(chunkVisTableKernel, "_EdgeTable", edgeBuffer);
         computeShader.Dispatch(chunkVisTableKernel, dispatchGroups, 1, 1);
 
-        test = new uint[leadingEdgeCount];
+        /*
+         test = new uint[leadingEdgeCount];
         visibilityBuffers[index].GetData(test);
         foreach (uint g in test)
         {
             Debug.Log(g);
         }
+         */
     }
 
     public void GenerateMeshProperties()
