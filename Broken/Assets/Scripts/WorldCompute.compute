@@ -20,7 +20,8 @@ struct MeshIndex
 
 RWStructuredBuffer<uint> _TempTable;
 RWStructuredBuffer<uint> _ChunkEdgeTable;
-RWStructuredBuffer<MeshIndex> _DummyChunk;
+RWStructuredBuffer<uint> _DummyChunk;
+RWStructuredBuffer<MeshIndex> _AltDummyChunk;
 RWStructuredBuffer<uint> _EdgeTable;
 RWStructuredBuffer<uint> _ChunkVisibilityTables;
 RWStructuredBuffer<uint3> _ChunkTable;
@@ -31,13 +32,17 @@ AppendStructuredBuffer<uint> _RenderProperties;
 RWStructuredBuffer<uint> _ChunkVisibility;
 
 //These are just references for the cull method
-StructuredBuffer<MeshIndex> _DiagonalTopChunk;
-StructuredBuffer<MeshIndex> _TopLeftChunk;
-StructuredBuffer<MeshIndex> _DiagonalMiddleChunk;
-StructuredBuffer<MeshIndex> _MiddleLeftChunk;
-StructuredBuffer<MeshIndex> _TopRightChunk;
-StructuredBuffer<MeshIndex> _MiddleTopChunk;
-StructuredBuffer<MeshIndex> _MiddleRightChunk;
+StructuredBuffer<uint> _DiagonalTopChunk;
+StructuredBuffer<uint> _TopLeftChunk;
+StructuredBuffer<uint> _DiagonalMiddleChunk;
+StructuredBuffer<uint> _MiddleLeftChunk;
+StructuredBuffer<uint> _TopRightChunk;
+StructuredBuffer<uint> _MiddleTopChunk;
+StructuredBuffer<uint> _MiddleRightChunk;
+
+StructuredBuffer<MeshIndex> _IntDiagonalMiddleChunk;
+StructuredBuffer<MeshIndex> _IntMiddleLeftChunk;
+StructuredBuffer<MeshIndex> _IntMiddleRightChunk;
 
 uint cubeCount;
 uint length;
@@ -386,10 +391,7 @@ void calcChunkVis(RWStructuredBuffer<MeshIndex> meshProperties, RWStructuredBuff
 {
 	if ((meshProperties[index].lowIndex & 0xFFF) != 0)
 	{
-		if (chunkTable[index].y < chunkVisibilityTable[edgeTable[index] >> 17])
-		{
-			chunkVisibilityTable[index] = chunkTable[index].y;
-		}
+		InterlockedMin(chunkVisibilityTable[edgeTable[index] >> 17], chunkTable[index].y);
 	}
 }
 
@@ -402,8 +404,10 @@ void ZeroCounter(uint3 id : SV_DispatchThreadID)
 [numthreads(1024, 1, 1)]
 void InitializeDummyChunk(uint3 id : SV_DispatchThreadID)
 {
-	_DummyChunk[id.x].lowIndex = 0;
-	_DummyChunk[id.x].highIndex = 0;
+	_DummyChunk[id.x] = 20;
+
+	_AltDummyChunk[id.x].lowIndex = 0;
+	_AltDummyChunk[id.x].highIndex = 0;
 }
 
 [numthreads(1024, 1, 1)]
@@ -425,7 +429,7 @@ void SingleThread(uint3 id : SV_DispatchThreadID)
 	{
 		if (_ChunkTable[i].x == 0 || _ChunkTable[i].y == 0 || _ChunkTable[i].z == 0)
 		{
-			_TempTable[i] |= count;
+			_TempTable[i] = count;
 			count++;
 		}
 	}
@@ -491,19 +495,9 @@ void PopulateRender(uint3 id : SV_DispatchThreadID)
 	}
 	else
 	{
-		if (crossHeight > 9)
+		if (((_MeshProperties[id.x].lowIndex >> 12) & 1U) == 1)
 		{
-			if (((_MeshProperties[id.x].highIndex >> (crossHeight - 10) * 2) & 1U) == 1)
-			{
-				_RenderProperties.Append(id.x + ((_MeshProperties[id.x].lowIndex & 0xFFF) << 16));
-			}
-		}
-		else
-		{
-			if (((_MeshProperties[id.x].lowIndex >> 12 + crossHeight * 2) & 1U) == 1)
-			{
-				_RenderProperties.Append(id.x + ((_MeshProperties[id.x].lowIndex & 0xFFF) << 16));
-			}
+			_RenderProperties.Append(id.x + ((_MeshProperties[id.x].lowIndex & 0xFFF) << 16));
 		}
 	}
 }
@@ -524,6 +518,26 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 	bool skip = 1;
 	uint tempHeight = (crossHeight - 10) * 2;
 
+	switch (_EdgeTable[id.x] & 0x7)
+	{
+	case 0:
+		visibilityCheck = (crossHeight < _DiagonalTopChunk[_EdgeTable[(_EdgeTable[id.x] >> 5) & 0xFFF] >> 17] - 1);
+		break;
+	case 1:
+		visibilityCheck = (crossHeight < _TopLeftChunk[_EdgeTable[(_EdgeTable[id.x] >> 5) & 0xFFF] >> 17] - 1);
+		break;
+	case 4:
+		visibilityCheck = (crossHeight < _TopRightChunk[_EdgeTable[(_EdgeTable[id.x] >> 5) & 0xFFF] >> 17] - 1);
+		break;
+	case 5:
+		visibilityCheck = (crossHeight < _MiddleTopChunk[_EdgeTable[(_EdgeTable[id.x] >> 5) & 0xFFF] >> 17] - 1);
+		break;
+	default:
+		skip = 0;
+		break;
+	}
+
+	/*
 	if (crossHeight > 9)
 	{
 		switch (_EdgeTable[id.x] & 0x7)
@@ -566,8 +580,7 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 			break;
 		}
 	}
-
-	
+	*/
 	calculateVisibilityHighIndex(_Counter, _MeshProperties, _EdgeTable, id.x, visibilityCheck, skip, 14);
 }
 
@@ -579,6 +592,24 @@ void StupidCull2(uint3 id: SV_DispatchThreadID)
 	bool skip = 1;
 	uint tempHeight = (crossHeight - 10) * 2;
 
+	switch (_EdgeTable[id.x] & 0x7)
+	{
+	case 2:
+
+		visibilityCheck = (crossHeight < _DiagonalMiddleChunk[_EdgeTable[(_EdgeTable[id.x] >> 5) & 0xFFF] >> 17] - 1);
+		break;
+	case 3:
+		visibilityCheck = (crossHeight < _MiddleLeftChunk[_EdgeTable[(_EdgeTable[id.x] >> 5) & 0xFFF] >> 17] - 1);
+		break;
+	case 6:
+		visibilityCheck = (crossHeight < _MiddleRightChunk[_EdgeTable[(_EdgeTable[id.x] >> 5) & 0xFFF] >> 17] - 1);
+		break;
+	default:
+		skip = 0;
+		break;
+	}
+
+	/*
 	if (crossHeight > 9)
 	{
 		switch (_EdgeTable[id.x] & 0x7)
@@ -615,8 +646,8 @@ void StupidCull2(uint3 id: SV_DispatchThreadID)
 			break;
 		}
 	}
+	*/
 	
-
 	calculateVisibilityHighIndex(_Counter, _MeshProperties, _EdgeTable, id.x, visibilityCheck, skip, 14);
 	/*
 	uint index = id.x;
@@ -677,80 +708,39 @@ void CoolCull(uint3 id : SV_DispatchThreadID)
 		{
 			bool visibilityCheck = false;
 			bool skip = 1;
-			
-			if (crossHeight > 9)
+
+			switch (_EdgeTable[id.x] & 0x7)
 			{
-				uint tempHeight = (crossHeight - 10) * 2;
-
-				switch (_EdgeTable[id.x] & 0x7)
-				{
-				case 0:
-					visibilityCheck = true;
-					break;
-				case 1:
-					visibilityCheck = true;
-					break;
-				case 2:
-					visibilityCheck = ((_DiagonalMiddleChunk[(_EdgeTable[id.x] >> 5) & 0xFFF].highIndex >> 1 + tempHeight) ^ 1U);
-					break;
-				case 3:
-					visibilityCheck = ((_MiddleLeftChunk[(_EdgeTable[id.x] >> 5) & 0xFFF].highIndex >> 1 + tempHeight) ^ 1U);
-					break;
-				case 4:
-					visibilityCheck = true;
-					break;
-				case 5:
-					visibilityCheck = true;
-					break;
-				case 6:
-					visibilityCheck = ((_MiddleRightChunk[(_EdgeTable[id.x] >> 5) & 0xFFF].highIndex >> 1 + tempHeight) ^ 1U);
-					break;
-				case 7:
-					visibilityCheck = true;
-					break;
-				default:
-					skip = 0;
-					break;
-				}
-
-				calculateVisibilityHighIndex(_Counter, _MeshProperties, _EdgeTable, id.x, visibilityCheck, skip, tempHeight);
+			case 0:
+				visibilityCheck = true;
+				break;
+			case 1:
+				visibilityCheck = true;
+				break;
+			case 2:
+				visibilityCheck = ((_IntDiagonalMiddleChunk[(_EdgeTable[id.x] >> 5) & 0xFFF].lowIndex >> 13) ^ 1U);
+				break;
+			case 3:
+				visibilityCheck = ((_IntMiddleLeftChunk[(_EdgeTable[id.x] >> 5) & 0xFFF].lowIndex >> 13) ^ 1U);
+				break;
+			case 4:
+				visibilityCheck = true;
+				break;
+			case 5:
+				visibilityCheck = true;
+				break;
+			case 6:
+				visibilityCheck = ((_IntMiddleRightChunk[(_EdgeTable[id.x] >> 5) & 0xFFF].lowIndex >> 13) ^ 1U);
+				break;
+			case 7:
+				visibilityCheck = true;
+				break;
+			default:
+				skip = 0;
+				break;
 			}
-			else
-			{
-				uint tempHeight = crossHeight * 2;
-				switch (_EdgeTable[id.x] & 0x7)
-				{
-				case 0:
-					visibilityCheck = true;
-					break;
-				case 1:
-					visibilityCheck = true;
-					break;
-				case 2:
-					visibilityCheck = ((_DiagonalMiddleChunk[(_EdgeTable[id.x] >> 5) & 0xFFF].lowIndex >> 13 + tempHeight) ^ 1U);
-					break;
-				case 3:
-					visibilityCheck = ((_MiddleLeftChunk[(_EdgeTable[id.x] >> 5) & 0xFFF].lowIndex >> 13 + tempHeight) ^ 1U);
-					break;
-				case 4:
-					visibilityCheck = true;
-					break;
-				case 5:
-					visibilityCheck = true;
-					break;
-				case 6:
-					visibilityCheck = ((_MiddleRightChunk[(_EdgeTable[id.x] >> 5) & 0xFFF].lowIndex >> 13 + tempHeight) ^ 1U);
-					break;
-				case 7:
-					visibilityCheck = true;
-					break;
-				default:
-					skip = 0;
-					break;
-				}
 
-				calculateVisibility(_Counter, _MeshProperties, _EdgeTable, id.x, visibilityCheck, skip, tempHeight);
-			}
+			calculateVisibility(_Counter, _MeshProperties, _EdgeTable, id.x, visibilityCheck, skip, 0);
 		}
 	}
 }
