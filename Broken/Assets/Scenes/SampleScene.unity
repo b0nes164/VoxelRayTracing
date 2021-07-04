@@ -353,7 +353,7 @@ MonoBehaviour:
   compute: {fileID: 7200000, guid: 3701dede8a14e7c40abec783bc884acf, type: 3}
   prefab: {fileID: 5822745854383835123, guid: e5568392da12f6f4eb4c3b694fb1161a, type: 3}
   renderMethod: 0
-  render: 1
+  render: 0
   chunkInfo: 0
   halfMesh: 0
   text: {fileID: 1857610603}
