@@ -57,6 +57,7 @@ public class RenderingManager : MonoBehaviour
 
         worldGen = new WorldGeneration(render, chunkInfo, compute);
         worldGen.GenerateWorld();
+        worldGen.GenerateVisTable();
         nullChecks = worldGen.GetNullChecks();
 
         if (renderMethod)
@@ -92,14 +93,14 @@ public class RenderingManager : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.PageDown))
         {
-            cross = Mathf.Clamp(cross -= 1, 1, 80);
+            cross = Mathf.Clamp(cross -= 1, 1, 32);
             worldGen.ReleaseRenderBuffers();
             worldGen.HeightRendering(cross);
         }
 
         if (Input.GetKeyDown(KeyCode.PageUp))
         {
-            cross = Mathf.Clamp(cross += 1, 1, 80);
+            cross = Mathf.Clamp(cross += 1, 1, 32);
             worldGen.ReleaseRenderBuffers();
             worldGen.HeightRendering(cross);
         }
