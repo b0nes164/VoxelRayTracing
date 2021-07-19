@@ -9,9 +9,9 @@ public class WorldGeneration
     private ComputeShader computeShader;
     private bool chunkInfo;
 
-    private static readonly int xChunks = 1;
-    private static readonly int yChunks = 2;
-    private static readonly int zChunks = 1;
+    private static readonly int xChunks = 10;
+    private static readonly int yChunks = 10;
+    private static readonly int zChunks = 10;
     private static int chunkCount = xChunks * yChunks * zChunks;
 
     private static int length = 16;
@@ -21,6 +21,11 @@ public class WorldGeneration
     private static int cubeCount = length * width * height;
     private static int step = (width * height) + width + 1;
     private static int dispatchGroups = Mathf.CeilToInt(cubeCount / 1024f);
+
+    private static int globalXCubes = xChunks * length;
+    private static int globalYCubes = yChunks * height;
+    private static int globalZCubes = zChunks * width;
+    private static int globalLeadingEdgeCount = (globalXCubes * globalZCubes) + (globalXCubes * (globalYCubes - 1)) + ((globalZCubes - 1) * (globalYCubes - 1));
 
     private ComputeBuffer chunkEdgeBuffer;
     private ComputeBuffer chunkPositionBuffer;
@@ -551,7 +556,9 @@ public class WorldGeneration
         {
             computeShader.SetBool("topEdge", topEdge);
             computeShader.SetInt("currentYChunk", Mathf.FloorToInt(cross / height));
-            computeShader.SetInt("yOffset", yOffset[index]);
+            // will need to be changed
+            computeShader.SetInt("sameLevelOffset", yOffset[index]);
+            computeShader.SetInt("topOffset", yOffset[index] + 16);
             computeShader.SetInt("trueHeight", cross);
 
             int stupidCullKernel = computeShader.FindKernel("StupidCull");
@@ -669,7 +676,7 @@ public class WorldGeneration
                     break;
             }
             computeShader.Dispatch(stupidCullKernel, dispatchGroups, 1, 1);
-            //computeShader.Dispatch(stupidCullTwoKernel, dispatchGroups, 1, 1);
+            computeShader.Dispatch(stupidCullTwoKernel, dispatchGroups, 1, 1);
         }
         else
         {

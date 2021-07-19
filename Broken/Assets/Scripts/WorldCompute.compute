@@ -16,7 +16,7 @@
 #pragma kernel StupidCull
 #pragma kernel StupidCull2
 #pragma kernel CoolCull
-#pragma kernel StoolCull
+#pragma kernel GlobalRays
 
 struct DualIndex
 {
@@ -80,6 +80,8 @@ uint crossHeight;
 uint trueHeight;
 uint currentYChunk;
 uint chunkIndex;
+uint topOffset;
+uint sameLevelOffset;
 
 //
 // Description : Array and textureless GLSL 2D/3D/4D simplex 
@@ -498,30 +500,30 @@ void calcGlobalVis(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<ui
 
 bool calcLocalVis(RWStructuredBuffer<TriIndex> edgeTable, StructuredBuffer<uint> nextChunk, bool _visibilityCheck, uint index, uint _bitIndex, uint _yOffset, uint _trueHeight)
 {
-		if (((nextChunk[edgeTable[(edgeTable[index].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> _bitIndex) & 1U) == 1)
+	if (((nextChunk[edgeTable[(edgeTable[index].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> _bitIndex) & 1U) == 1)
+	{
+		if (((nextChunk[edgeTable[(edgeTable[index].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> 4) & 1U) == 0)
 		{
-			if (((nextChunk[edgeTable[(edgeTable[index].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> 4) & 1U) == 0)
-			{
-				_visibilityCheck = false;
-			}
-			else
-			{
-				if (_trueHeight - 1 < ((nextChunk[edgeTable[(edgeTable[index].lowIndex >> 5) & 0xFFF].lowIndex >> 17] & 0xF) + _yOffset))
-				{
-					_visibilityCheck = true;
-				}
-				else
-				{
-					_visibilityCheck = false;
-				}
-			}
+			_visibilityCheck = false;
 		}
 		else
 		{
-			_visibilityCheck = true;
+			if (_trueHeight < ((nextChunk[edgeTable[(edgeTable[index].lowIndex >> 5) & 0xFFF].lowIndex >> 17] & 0xF) + _yOffset + 1))
+			{
+				_visibilityCheck = true;
+			}
+			else
+			{
+				_visibilityCheck = false;
+			}
 		}
+	}
+	else
+	{
+		_visibilityCheck = true;
+	}
 
-		return _visibilityCheck;
+	return _visibilityCheck;
 }
 
 [numthreads(1, 1, 1)]
@@ -723,16 +725,16 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 	switch (_EdgeTable[id.x].lowIndex & 0x7)
 	{
 	case 0:
-		visibilityCheck = calcLocalVis(_EdgeTable, _DiagonalTopChunk, visibilityCheck, id.x, bitIndex, yOffset, trueHeight);
+		visibilityCheck = calcLocalVis(_EdgeTable, _DiagonalTopChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
 		break;
 	case 1:
-		visibilityCheck = calcLocalVis(_EdgeTable, _TopLeftChunk, visibilityCheck, id.x, bitIndex, yOffset, trueHeight);
+		visibilityCheck = calcLocalVis(_EdgeTable, _TopLeftChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
 		break;
 	case 4:
-		visibilityCheck = calcLocalVis(_EdgeTable, _TopRightChunk, visibilityCheck, id.x, bitIndex, yOffset, trueHeight);
+		visibilityCheck = calcLocalVis(_EdgeTable, _TopRightChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
 		break;
 	case 5:
-		visibilityCheck = calcLocalVis(_EdgeTable, _MiddleTopChunk, visibilityCheck, id.x, bitIndex, yOffset, trueHeight);
+		visibilityCheck = calcLocalVis(_EdgeTable, _MiddleTopChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
 		break;
 	default:
 		skip = 0;
@@ -814,35 +816,16 @@ void StupidCull2(uint3 id: SV_DispatchThreadID)
 
 	uint bitIndex = currentYChunk + 5;
 
-	/*
 	switch (_EdgeTable[id.x].lowIndex & 0x7)
 	{
 	case 2:
-		visibilityCheck = (((_ChunkVisibilityTables[_EdgeTable[id.x].lowIndex >> 17] >> bitIndex) & 1U) == 1 && (((_DiagonalMiddleChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> bitIndex) & 1U) == 0));
+		visibilityCheck = calcLocalVis(_EdgeTable, _DiagonalMiddleChunk, visibilityCheck, id.x, bitIndex, sameLevelOffset, trueHeight);
 		break;
 	case 3:
-		visibilityCheck = (((_ChunkVisibilityTables[_EdgeTable[id.x].lowIndex >> 17] >> bitIndex) & 1U) == 1 && (((_MiddleLeftChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> bitIndex) & 1U) == 0));
+		visibilityCheck = calcLocalVis(_EdgeTable, _MiddleLeftChunk, visibilityCheck, id.x, bitIndex, sameLevelOffset, trueHeight);
 		break;
 	case 6:
-		visibilityCheck = (((_ChunkVisibilityTables[_EdgeTable[id.x].lowIndex >> 17] >> bitIndex) & 1U) == 1 && (((_MiddleRightChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> bitIndex) & 1U) == 0));
-		break;
-	default:
-		skip = 0;
-		break;
-	}
-	*/
-	
-	
-	switch (_EdgeTable[id.x].lowIndex & 0x7)
-	{
-	case 2:
-		visibilityCheck = (((_DiagonalMiddleChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> bitIndex) & 1U) == 0);
-		break;
-	case 3:
-		visibilityCheck = (((_MiddleLeftChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> bitIndex) & 1U) == 0);
-		break;
-	case 6:
-		visibilityCheck = (((_MiddleRightChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> bitIndex) & 1U) == 0);
+		visibilityCheck = calcLocalVis(_EdgeTable, _MiddleRightChunk, visibilityCheck, id.x, bitIndex, sameLevelOffset, trueHeight);
 		break;
 	default:
 		skip = 0;
@@ -934,52 +917,11 @@ void CoolCull(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(1024, 1, 1)]
-void StoolCull(uint3 id : SV_DispatchThreadID)
+void GlobalRays(uint3 id : SV_DispatchThreadID)
 {
-	_MeshProperties[id.x].lowIndex &= 0xFFF;
-	_MeshProperties[id.x].highIndex = 0;
+	// this returns the face index from any meshProperties index
 
-	if (_ChunkTable[id.x].y <= crossHeight)
-	{
-		if (_ChunkTable[id.x].y == crossHeight || ((_EdgeTable[id.x].lowIndex >> 4) & 1U) == 1)
-		{
-			bool visibilityCheck = false;
-			bool skip = 1;
 
-			switch (_EdgeTable[id.x].lowIndex & 0x7)
-			{
-			case 0:
-				visibilityCheck = true;
-				break;
-			case 1:
-				visibilityCheck = true;
-				break;
-			case 2:
-				visibilityCheck = (_ChunkTable[id.x].y < _DiagonalMiddleChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17]);
-				break;
-			case 3:
-				visibilityCheck = (_ChunkTable[id.x].y < _MiddleLeftChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17]);
-				break;
-			case 4:
-				visibilityCheck = true;
-				break;
-			case 5:
-				visibilityCheck = true;
-				break;
-			case 6:
-				visibilityCheck = (_ChunkTable[id.x].y < _MiddleRightChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17]);
-				break;
-			case 7:
-				visibilityCheck = true;
-				break;
-			default:
-				skip = 0;
-				break;
-			}
-
-			calculateVisibility(_Counter, _MeshProperties, _EdgeTable, id.x, visibilityCheck, skip, 0);
-		}
-	}
 }
 
 

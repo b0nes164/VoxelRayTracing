@@ -314,7 +314,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cam: {fileID: 963194227}
   sensitivity: 10
-  zoomSense: 10
+  zoomSense: 0.05
 --- !u!1 &1024011389
 GameObject:
   m_ObjectHideFlags: 0
