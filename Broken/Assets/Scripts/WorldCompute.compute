@@ -6,6 +6,7 @@
 #pragma kernel InitializeRays
 #pragma kernel InitializeRaysTwo
 #pragma kernel InitializeChunkVisibilityTable
+#pragma kernel InitializeGlobalRayTable
 #pragma kernel Noise
 #pragma kernel CheckFaces
 #pragma kernel PopulateRender 
@@ -16,7 +17,6 @@
 #pragma kernel StupidCull
 #pragma kernel StupidCull2
 #pragma kernel CoolCull
-#pragma kernel GlobalRays
 
 struct DualIndex
 {
@@ -41,11 +41,13 @@ RWStructuredBuffer<uint> _TempTable;
 RWStructuredBuffer<TriIndex> _EdgeTable;
 RWStructuredBuffer<uint> _ChunkVisibilityTables;
 RWStructuredBuffer<uint3> _ChunkTable;
+RWStructuredBuffer<uint> _GlobalRayTable;
 RWStructuredBuffer<DualIndex> _MeshProperties;
 RWStructuredBuffer<int> _Counter;
 AppendStructuredBuffer<uint> _RenderProperties;
 
 RWStructuredBuffer<uint> _ChunkVisibility;
+
 
 //These are just references for the cull method
 StructuredBuffer<uint> _DiagonalTopChunk;
@@ -60,9 +62,10 @@ StructuredBuffer<DualIndex> _IntDiagonalMiddleChunk;
 StructuredBuffer<DualIndex> _IntMiddleLeftChunk;
 StructuredBuffer<DualIndex> _IntMiddleRightChunk;
 
-bool limitingAxis;
 uint cubeCount;
 uint leadingEdgeCount;
+uint stepIndex;
+uint counter;
 uint length;
 uint height;
 uint width;
@@ -72,8 +75,13 @@ uint zChunks;
 uint xOffset;
 uint yOffset;
 uint zOffset;
-uint stepIndex;
-uint counter;
+
+uint globalLength;
+uint globalHeight;
+uint globalWidth;
+uint globalStep;
+uint globalStepDepth;
+uint packedSize;
 
 bool topEdge;
 uint crossHeight;
@@ -430,24 +438,6 @@ void calcChunkVis(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuff
 	{
 		InterlockedMin(chunkVisibilityTable[edgeTable[index].lowIndex >> 17], chunkTable[index].y);
 	}
-	/*
-	bool stop = true;
-	if ((meshProperties[index].lowIndex & 0xFFF) != 0)
-	{
-		chunkVisibilityTable[edgeTable[index].lowIndex >> 17] = min(chunkVisibilityTable[edgeTable[index].lowIndex >> 17], chunkTable[index].y);
-		stop = false;
-	}
-
-	while (((edgeTable[index].lowIndex >> 4) & 1U) == 0 && stop)
-	{
-		index += stepIndex;
-		if ((meshProperties[index].lowIndex & 0xFFF) != 0)
-		{
-			chunkVisibilityTable[edgeTable[index].lowIndex >> 17] = min(chunkVisibilityTable[edgeTable[index].lowIndex >> 17], chunkTable[index].y);
-			stop = false;
-		}
-	}
-	*/
 }
 
 void calcChunkVisTwo(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> chunkVisibilityTable, RWStructuredBuffer<TriIndex> edgeTable, uint index)
@@ -526,6 +516,130 @@ bool calcLocalVis(RWStructuredBuffer<TriIndex> edgeTable, StructuredBuffer<uint>
 	return _visibilityCheck;
 }
 
+//*****************************************************************************************************
+// Ray Methods
+uint GlobalIndexToGlobalX(uint globalIndex)
+{
+	return round(floor(globalIndex / (globalHeight * globalWidth)));
+}
+
+uint GlobalIndexToGlobalY(uint globalIndex)
+{
+	return round(floor(globalIndex / globalWidth) % globalHeight);
+}
+
+uint GlobalIndexToRay(uint globalIndex)
+{
+	return globalIndex - (((GlobalIndexToGlobalX(globalIndex) - 1) * (globalWidth - 1) * (globalHeight - 1)) + ((GlobalIndexToGlobalY(globalIndex) - 1) * (globalWidth - 1)) );
+}
+
+uint LocalIndexToGlobal(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable)
+{
+	return localIndex + (chunkTable[localIndex].y * width) + (chunkTable[localIndex].x * width * height) + (chunkPositionTable[chunkIndex].z * width) + (chunkPositionTable[chunkIndex].y * width * height * zChunks)
+		+ (chunkPositionTable[chunkIndex].x * length * width * height * zChunks * yChunks);
+}
+
+uint GlobalIndexToRayStartingIndex(uint globalIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable)
+{
+	if(chunkPositionTable[chunkIndex].x == 0 || chunkPositionTable[chunkIndex].y == 0 || chunkPositionTable[chunkIndex].z == 0)
+	{
+		if (globalIndex <= (globalHeight * globalWidth) - 1)
+		{
+			return globalIndex;
+		}
+		else
+		{
+			if (globalIndex % globalWidth == 0)
+			{
+				return globalIndex;
+			}
+			else
+			{
+				if (globalIndex % (globalWidth * globalHeight) <= globalWidth - 1)
+				{
+					return globalIndex;
+				}
+				else
+				{
+					//this should never happen, error if seen
+
+					return 4294967295U;
+				}
+			}
+		}
+	}
+	else
+	{
+		return globalIndex % globalStep;
+	}
+}
+
+uint ChunkIndexToRayStep(uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable)
+{
+	return min(min(chunkPositionTable[chunkIndex].x, chunkPositionTable[chunkIndex].y), chunkPositionTable[chunkIndex].z);
+}
+
+uint RayIndexToAdjustedIndex(uint rayStep, uint rayIndex)
+{
+	return (rayIndex * globalStepDepth) + rayStep;
+}
+
+uint LocalIndexToAdjustedIndex(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable)
+{
+	return RayIndexToAdjustedIndex(ChunkIndexToRayStep(chunkIndex, chunkPositionTable), GlobalIndexToRay(GlobalIndexToRayStartingIndex(LocalIndexToGlobal(localIndex, chunkIndex, chunkTable, chunkPositionTable), chunkIndex, chunkPositionTable)));
+}
+
+uint AdjustedIndexToArray(uint adjustedIndex)
+{
+	return floor(adjustedIndex / packedSize);
+}
+
+uint AdjustedIndexToBit(uint adjustedIndex)
+{
+	return (adjustedIndex % packedSize);
+}
+
+//not being used
+uint2 AdjustedIndexToBoth(uint adjustedIndex)
+{
+	return uint2(AdjustedIndexToArray(adjustedIndex), AdjustedIndexToBit(adjustedIndex));
+}
+
+uint GetRayValue(uint adjustedIndex, RWStructuredBuffer<uint> globalRayTable)
+{
+	return ((globalRayTable[AdjustedIndexToArray(adjustedIndex)] >> AdjustedIndexToBit(adjustedIndex)) & 15U);
+}
+
+uint GetRayValue(uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalRayTable)
+{
+	return ((globalRayTable[arrayIndex] >> bitIndex) & 15U);
+}
+
+void ClearBitSequence(uint bitIndex, uint arrayIndex, RWStructuredBuffer<uint> globalRayTable)
+{
+	InterlockedAnd(globalRayTable[arrayIndex], ~(15U << bitIndex * packedSize));
+}
+
+void SetRayValue(uint value, uint adjustedIndex, uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalRayTable)
+{
+	ClearBitSequence(bitIndex, arrayIndex, globalRayTable);
+	InterlockedOr(globalRayTable[arrayIndex], (value << bitIndex * packedSize));
+}
+
+void GlobalRayMin(uint adjustedIndex, uint arrayIndex, uint bitIndex, uint localIndex, RWStructuredBuffer<uint> globalRayTable, RWStructuredBuffer<uint3> chunkTable)
+{
+	SetRayValue(min(GetRayValue(arrayIndex, bitIndex, globalRayTable), chunkTable[localIndex].y), adjustedIndex, arrayIndex, bitIndex, globalRayTable);
+}
+
+void calcChunkVisGlobalRays(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> globalRayTable, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint3> chunkPositionTable, uint localIndex, uint chunkIndex)
+{
+	if ((meshProperties[localIndex].lowIndex & 0xFFF) != 0)
+	{
+		uint adjustedIndex = LocalIndexToAdjustedIndex(localIndex, chunkIndex, chunkTable, chunkPositionTable);
+		GlobalRayMin(adjustedIndex, AdjustedIndexToArray(adjustedIndex), AdjustedIndexToBit(adjustedIndex), localIndex, globalRayTable, chunkTable);
+	}
+}
+
 [numthreads(1, 1, 1)]
 void ZeroCounter(uint3 id : SV_DispatchThreadID)
 {
@@ -596,6 +710,12 @@ void InitializeChunkVisibilityTable(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(1024, 1, 1)]
+void InitializeGlobalRayTable(uint3 id: SV_DispatchThreadID)
+{
+	_GlobalRayTable[id.x] = 4294967295U;
+}
+
+[numthreads(1024, 1, 1)]
 void Noise(uint3 id : SV_DispatchThreadID)
 {
 	//Ensure the Mesh table is wiped
@@ -655,6 +775,9 @@ void PopulateRender(uint3 id : SV_DispatchThreadID)
 void ChunkVisibilityTable(uint3 id: SV_DispatchThreadID)
 {
 	calcChunkVis(_MeshProperties, _ChunkTable, _ChunkVisibilityTables, _EdgeTable, id.x);
+
+	calcChunkVisGlobalRays(_MeshProperties, _ChunkTable, _GlobalRayTable, _EdgeTable, _ChunkPositionTable, id.x, chunkIndex);
+
 }
 
 [numthreads(1024, 1, 1)]
@@ -915,15 +1038,6 @@ void CoolCull(uint3 id : SV_DispatchThreadID)
 		}
 	}
 }
-
-[numthreads(1024, 1, 1)]
-void GlobalRays(uint3 id : SV_DispatchThreadID)
-{
-	// this returns the face index from any meshProperties index
-
-
-}
-
 
 
 	

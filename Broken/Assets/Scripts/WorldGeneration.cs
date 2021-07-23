@@ -9,9 +9,9 @@ public class WorldGeneration
     private ComputeShader computeShader;
     private bool chunkInfo;
 
-    private static readonly int xChunks = 10;
-    private static readonly int yChunks = 10;
-    private static readonly int zChunks = 10;
+    private static readonly int xChunks = 2;
+    private static readonly int yChunks = 2;
+    private static readonly int zChunks = 2;
     private static int chunkCount = xChunks * yChunks * zChunks;
 
     private static int length = 16;
@@ -22,10 +22,11 @@ public class WorldGeneration
     private static int step = (width * height) + width + 1;
     private static int dispatchGroups = Mathf.CeilToInt(cubeCount / 1024f);
 
-    private static int globalXCubes = xChunks * length;
-    private static int globalYCubes = yChunks * height;
-    private static int globalZCubes = zChunks * width;
-    private static int globalLeadingEdgeCount = (globalXCubes * globalZCubes) + (globalXCubes * (globalYCubes - 1)) + ((globalZCubes - 1) * (globalYCubes - 1));
+    private static int globalLength = xChunks * length;
+    private static int globalHeight = yChunks * height;
+    private static int globalWidth = zChunks * width;
+    private static int globalLeadingEdgeCount = (globalLength * globalWidth) + (globalLength * (globalHeight - 1)) + ((globalWidth - 1) * (globalHeight - 1));
+    private static int globalStep = (globalWidth * globalHeight) + globalWidth + 1;
 
     private ComputeBuffer chunkEdgeBuffer;
     private ComputeBuffer chunkPositionBuffer;
@@ -38,6 +39,7 @@ public class WorldGeneration
     private ComputeBuffer cubeBuffer;
     private ComputeBuffer edgeBuffer;
     private ComputeBuffer tempBuffer;
+    private ComputeBuffer globalRayBuffer;
     private ComputeBuffer[] mainBuffers = new ComputeBuffer[chunkCount];
     private ComputeBuffer[] renderBuffers = new ComputeBuffer[chunkCount];
     private ComputeBuffer[] visibilityBuffers = new ComputeBuffer[chunkCount];
@@ -69,15 +71,20 @@ public class WorldGeneration
         // ?? check this
         computeShader.SetInt("height", height);
         //
-        computeShader.SetBool("limitingAxis", width <= height);
+        computeShader.SetInt("packedSize", PackedSize());
         computeShader.SetInt("leadingEdgeCount", leadingEdgeCount);
+        computeShader.SetInt("globalLength", globalLength);
+        computeShader.SetInt("globalHeight", globalHeight);
+        computeShader.SetInt("globalWidth", globalWidth);
+        computeShader.SetInt("globalStep", globalStep);
+        computeShader.SetInt("globalStepDepth", Mathf.Min(Mathf.Min(globalHeight, globalLength), globalWidth));
         for (int i = 0; i < chunkCount; i++)
         {
             xOffset[i] = Mathf.FloorToInt(i / (yChunks * zChunks)) * length;
             yOffset[i] = (Mathf.FloorToInt(i / (zChunks)) % yChunks) * height;
             zOffset[i] = (i % zChunks) * width;
 
-            
+
 
             count[i] = new int[1];
             renderCalcCheck[i] = new bool[height * yChunks];
@@ -138,6 +145,12 @@ public class WorldGeneration
         computeShader.Dispatch(initializeRaysKernelTwo, dispatchGroups, 1, 1);
         tempBuffer.Release();
 
+        int initializeGlobalRaysKernel = computeShader.FindKernel("InitializeGlobalRayTable");
+        globalRayBuffer = new ComputeBuffer(Mathf.CeilToInt(globalLeadingEdgeCount / PackedSize()), sizeof(uint));
+        computeShader.SetBuffer(initializeGlobalRaysKernel, "_GlobalRayTable", globalRayBuffer);
+        computeShader.Dispatch(initializeGlobalRaysKernel, Mathf.CeilToInt(globalRayBuffer.count / 1024f), 1, 1);
+        
+
         for (int i = 0; i < dummyBuffersOne.Length; i++)
         {
             int initializeDummyKernel = computeShader.FindKernel("InitializeDummyChunks");
@@ -172,12 +185,16 @@ public class WorldGeneration
         for (int i = chunkCount; i > 0; i--)
         {
             int index = i - 1;
+            computeShader.SetInt("currentYChunk", chunkPositionTable[index].y);
+            computeShader.SetInt("chunkIndex", index);
 
             int chunkVisTableKernel = computeShader.FindKernel("ChunkVisibilityTable");
             computeShader.SetBuffer(chunkVisTableKernel, "_MeshProperties", mainBuffers[index]);
             computeShader.SetBuffer(chunkVisTableKernel, "_ChunkTable", cubeBuffer);
             computeShader.SetBuffer(chunkVisTableKernel, "_ChunkVisibilityTables", visibilityBuffers[index]);
             computeShader.SetBuffer(chunkVisTableKernel, "_EdgeTable", edgeBuffer);
+            computeShader.SetBuffer(chunkVisTableKernel, "_GlobalRayTable", globalRayBuffer);
+            computeShader.SetBuffer(chunkVisTableKernel, "_ChunkPositionTable", chunkPositionBuffer);
             computeShader.Dispatch(chunkVisTableKernel, dispatchGroups, 1, 1);
 
             int chunkVisTableKernelTwo = computeShader.FindKernel("ChunkVisibilityTableTwo");
@@ -195,9 +212,6 @@ public class WorldGeneration
                 Debug.Log(Convert.ToString(g, 2));
             }
             */
-
-            computeShader.SetInt("currentYChunk", chunkPositionTable[index].y);
-            computeShader.SetInt("chunkIndex", index);
 
             int chunkGlobalVisKernel = computeShader.FindKernel("ChunkGlobalVis");
             computeShader.SetBuffer(chunkGlobalVisKernel, "_ChunkVisibilityTables", visibilityBuffers[index]);
@@ -861,6 +875,7 @@ public class WorldGeneration
         chunkEdgeBuffer.Release();
         cubeBuffer.Release();
         edgeBuffer.Release();
+        globalRayBuffer.Release();
 
         foreach (ComputeBuffer c in dummyBuffersOne)
         {
@@ -889,6 +904,26 @@ public class WorldGeneration
         }
     }
 
+    //return the mininum number of bits to store height
+    private uint HeightToBits(int _height)
+    {
+        _height--;
+        uint counter = 0;
+
+        while (_height > 0)
+        {
+            _height >>= 1;
+            counter++;
+        }
+
+        return counter;
+    }
+
+    //return the number of height sequences that can be stored in a 32bit uint
+    private int PackedSize()
+    {
+        return Mathf.FloorToInt(32U / HeightToBits(height));
+    }
     public struct MeshProperties
     {
         public uint lowIndex;
