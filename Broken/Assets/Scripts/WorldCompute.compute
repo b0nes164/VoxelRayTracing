@@ -6,7 +6,7 @@
 #pragma kernel InitializeRays
 #pragma kernel InitializeRaysTwo
 #pragma kernel InitializeChunkVisibilityTable
-#pragma kernel InitializeGlobalRayTable
+#pragma kernel InitializeGlobalRayHeightTable
 #pragma kernel Noise
 #pragma kernel CheckFaces
 #pragma kernel PopulateRender 
@@ -41,10 +41,14 @@ RWStructuredBuffer<uint> _TempTable;
 RWStructuredBuffer<TriIndex> _EdgeTable;
 RWStructuredBuffer<uint> _ChunkVisibilityTables;
 RWStructuredBuffer<uint3> _ChunkTable;
-RWStructuredBuffer<uint> _GlobalRayTable;
 RWStructuredBuffer<DualIndex> _MeshProperties;
 RWStructuredBuffer<int> _Counter;
 AppendStructuredBuffer<uint> _RenderProperties;
+
+
+RWStructuredBuffer<uint> _GlobalRayHeightTable;
+RWStructuredBuffer<uint> _GlobalRaySolidTable;
+RWStructuredBuffer<uint> _GlobalRayShadowTable;
 
 RWStructuredBuffer<uint> _ChunkVisibility;
 
@@ -80,8 +84,11 @@ uint globalLength;
 uint globalHeight;
 uint globalWidth;
 uint globalStep;
-uint globalStepDepth;
+uint chunkStepDepth;
+
+//this will need to be changed
 uint packedSize;
+uint heightBitSize;
 
 bool topEdge;
 uint crossHeight;
@@ -488,11 +495,40 @@ void calcGlobalVis(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<ui
 	
 }
 
-bool calcLocalVis(RWStructuredBuffer<TriIndex> edgeTable, StructuredBuffer<uint> nextChunk, bool _visibilityCheck, uint index, uint _bitIndex, uint _yOffset, uint _trueHeight)
+//returns the local index of the corresponding next chunk in a ray
+uint LocalIndexToNext(uint localIndex, RWStructuredBuffer<TriIndex> edgeTable)
 {
-	if (((nextChunk[edgeTable[(edgeTable[index].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> _bitIndex) & 1U) == 1)
+	return (edgeTable[localIndex].lowIndex >> 5) & 0xFFF;
+}
+
+//returns the local ray index from a local index
+uint LocalIndexToLocalRay(uint localIndex, RWStructuredBuffer<TriIndex> edgeTable)
+{
+	return edgeTable[localIndex].lowIndex >> 17;
+}
+
+//returns the ray index of the corresponding next chunk in a ray
+uint LocalIndexToNextRay(uint localIndex, RWStructuredBuffer<TriIndex> edgeTable)
+{
+	return LocalIndexToLocalRay(LocalIndexToNext(localIndex, edgeTable), edgeTable);
+}
+
+//returns whether the next chunk at the specified height level is in shadow
+bool IsNextChunkInShadow(uint localIndex, uint shadowBitIndex, StructuredBuffer<uint> nextChunk, RWStructuredBuffer<TriIndex> edgeTable)
+{
+	return ((nextChunk[LocalIndexToNextRay(localIndex, edgeTable)] >> shadowBitIndex) & 1U) == 1;
+}
+
+//returns whether the next chunk is solid
+bool IsNextChunkSolid(uint localIndex, StructuredBuffer<uint> nextChunk, RWStructuredBuffer<TriIndex> edgeTable)
+{
+	return ((nextChunk[LocalIndexToNextRay(localIndex, edgeTable)] >> 4) & 1U) == 1;
+}
+bool CalcLocalVis(RWStructuredBuffer<TriIndex> edgeTable, StructuredBuffer<uint> nextChunk, bool _visibilityCheck, uint index, uint _bitIndex, uint _yOffset, uint _trueHeight)
+{
+	if (IsNextChunkInShadow(index, _bitIndex, nextChunk, edgeTable))
 	{
-		if (((nextChunk[edgeTable[(edgeTable[index].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> 4) & 1U) == 0)
+		if (!IsNextChunkSolid(index, nextChunk, edgeTable))
 		{
 			_visibilityCheck = false;
 		}
@@ -581,7 +617,7 @@ uint ChunkIndexToRayStep(uint chunkIndex, RWStructuredBuffer<uint3> chunkPositio
 
 uint RayIndexToAdjustedIndex(uint rayStep, uint rayIndex)
 {
-	return (rayIndex * globalStepDepth) + rayStep;
+	return (rayIndex * chunkStepDepth) + rayStep;
 }
 
 uint LocalIndexToAdjustedIndex(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable)
@@ -599,46 +635,46 @@ uint AdjustedIndexToBit(uint adjustedIndex)
 	return (adjustedIndex % packedSize);
 }
 
-//not being used
-uint2 AdjustedIndexToBoth(uint adjustedIndex)
+
+
+
+//** These methods specific to ray height
+uint GetRayHeightValue(uint adjustedIndex, RWStructuredBuffer<uint> globalRayHeightTable)
 {
-	return uint2(AdjustedIndexToArray(adjustedIndex), AdjustedIndexToBit(adjustedIndex));
+	return ((globalRayHeightTable[AdjustedIndexToArray(adjustedIndex)] >> AdjustedIndexToBit(adjustedIndex)) & 15U);
 }
 
-uint GetRayValue(uint adjustedIndex, RWStructuredBuffer<uint> globalRayTable)
+uint GetRayHeightValue(uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalRayHeightTable)
 {
-	return ((globalRayTable[AdjustedIndexToArray(adjustedIndex)] >> AdjustedIndexToBit(adjustedIndex)) & 15U);
+	return ((globalRayHeightTable[arrayIndex] >> bitIndex) & 0xF);
 }
 
-uint GetRayValue(uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalRayTable)
+void ClearRayHeightBitSequence(uint bitIndex, uint arrayIndex, RWStructuredBuffer<uint> globalRayHeightTable)
 {
-	return ((globalRayTable[arrayIndex] >> bitIndex) & 15U);
+	InterlockedAnd(globalRayHeightTable[arrayIndex], ~(0xF << bitIndex * heightBitSize));
 }
 
-void ClearBitSequence(uint bitIndex, uint arrayIndex, RWStructuredBuffer<uint> globalRayTable)
+void SetRayHeightValue(uint value, uint adjustedIndex, uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalRayHeightTable)
 {
-	InterlockedAnd(globalRayTable[arrayIndex], ~(15U << bitIndex * packedSize));
+	ClearRayHeightBitSequence(bitIndex, arrayIndex, globalRayHeightTable);
+	InterlockedOr(globalRayHeightTable[arrayIndex], (value << bitIndex * heightBitSize));
 }
 
-void SetRayValue(uint value, uint adjustedIndex, uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalRayTable)
+void GlobalRayHeightMin(uint adjustedIndex, uint arrayIndex, uint bitIndex, uint localIndex, RWStructuredBuffer<uint> globalRayHeightTable, RWStructuredBuffer<uint3> chunkTable)
 {
-	ClearBitSequence(bitIndex, arrayIndex, globalRayTable);
-	InterlockedOr(globalRayTable[arrayIndex], (value << bitIndex * packedSize));
+	SetRayHeightValue(min(GetRayHeightValue(arrayIndex, bitIndex, globalRayHeightTable), chunkTable[localIndex].y), adjustedIndex, arrayIndex, bitIndex, globalRayHeightTable);
 }
 
-void GlobalRayMin(uint adjustedIndex, uint arrayIndex, uint bitIndex, uint localIndex, RWStructuredBuffer<uint> globalRayTable, RWStructuredBuffer<uint3> chunkTable)
-{
-	SetRayValue(min(GetRayValue(arrayIndex, bitIndex, globalRayTable), chunkTable[localIndex].y), adjustedIndex, arrayIndex, bitIndex, globalRayTable);
-}
-
-void calcChunkVisGlobalRays(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> globalRayTable, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint3> chunkPositionTable, uint localIndex, uint chunkIndex)
+void calcChunkVisGlobalRayHeight(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> globalRayHeightTable, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint3> chunkPositionTable, uint localIndex, uint chunkIndex)
 {
 	if ((meshProperties[localIndex].lowIndex & 0xFFF) != 0)
 	{
 		uint adjustedIndex = LocalIndexToAdjustedIndex(localIndex, chunkIndex, chunkTable, chunkPositionTable);
-		GlobalRayMin(adjustedIndex, AdjustedIndexToArray(adjustedIndex), AdjustedIndexToBit(adjustedIndex), localIndex, globalRayTable, chunkTable);
+		GlobalRayHeightMin(adjustedIndex, AdjustedIndexToArray(adjustedIndex), AdjustedIndexToBit(adjustedIndex), localIndex, globalRayHeightTable, chunkTable);
 	}
 }
+
+//************************************************************************
 
 [numthreads(1, 1, 1)]
 void ZeroCounter(uint3 id : SV_DispatchThreadID)
@@ -710,9 +746,9 @@ void InitializeChunkVisibilityTable(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(1024, 1, 1)]
-void InitializeGlobalRayTable(uint3 id: SV_DispatchThreadID)
+void InitializeGlobalRayHeightTable(uint3 id: SV_DispatchThreadID)
 {
-	_GlobalRayTable[id.x] = 4294967295U;
+	_GlobalRayHeightTable[id.x] = 4294967295U;
 }
 
 [numthreads(1024, 1, 1)]
@@ -776,7 +812,7 @@ void ChunkVisibilityTable(uint3 id: SV_DispatchThreadID)
 {
 	calcChunkVis(_MeshProperties, _ChunkTable, _ChunkVisibilityTables, _EdgeTable, id.x);
 
-	calcChunkVisGlobalRays(_MeshProperties, _ChunkTable, _GlobalRayTable, _EdgeTable, _ChunkPositionTable, id.x, chunkIndex);
+	calcChunkVisGlobalRayHeight(_MeshProperties, _ChunkTable, _GlobalRayHeightTable, _EdgeTable, _ChunkPositionTable, id.x, chunkIndex);
 
 }
 
@@ -848,16 +884,16 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 	switch (_EdgeTable[id.x].lowIndex & 0x7)
 	{
 	case 0:
-		visibilityCheck = calcLocalVis(_EdgeTable, _DiagonalTopChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
+		visibilityCheck = CalcLocalVis(_EdgeTable, _DiagonalTopChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
 		break;
 	case 1:
-		visibilityCheck = calcLocalVis(_EdgeTable, _TopLeftChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
+		visibilityCheck = CalcLocalVis(_EdgeTable, _TopLeftChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
 		break;
 	case 4:
-		visibilityCheck = calcLocalVis(_EdgeTable, _TopRightChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
+		visibilityCheck = CalcLocalVis(_EdgeTable, _TopRightChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
 		break;
 	case 5:
-		visibilityCheck = calcLocalVis(_EdgeTable, _MiddleTopChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
+		visibilityCheck = CalcLocalVis(_EdgeTable, _MiddleTopChunk, visibilityCheck, id.x, bitIndex, topOffset, trueHeight);
 		break;
 	default:
 		skip = 0;
@@ -942,13 +978,13 @@ void StupidCull2(uint3 id: SV_DispatchThreadID)
 	switch (_EdgeTable[id.x].lowIndex & 0x7)
 	{
 	case 2:
-		visibilityCheck = calcLocalVis(_EdgeTable, _DiagonalMiddleChunk, visibilityCheck, id.x, bitIndex, sameLevelOffset, trueHeight);
+		visibilityCheck = CalcLocalVis(_EdgeTable, _DiagonalMiddleChunk, visibilityCheck, id.x, bitIndex, sameLevelOffset, trueHeight);
 		break;
 	case 3:
-		visibilityCheck = calcLocalVis(_EdgeTable, _MiddleLeftChunk, visibilityCheck, id.x, bitIndex, sameLevelOffset, trueHeight);
+		visibilityCheck = CalcLocalVis(_EdgeTable, _MiddleLeftChunk, visibilityCheck, id.x, bitIndex, sameLevelOffset, trueHeight);
 		break;
 	case 6:
-		visibilityCheck = calcLocalVis(_EdgeTable, _MiddleRightChunk, visibilityCheck, id.x, bitIndex, sameLevelOffset, trueHeight);
+		visibilityCheck = CalcLocalVis(_EdgeTable, _MiddleRightChunk, visibilityCheck, id.x, bitIndex, sameLevelOffset, trueHeight);
 		break;
 	default:
 		skip = 0;
