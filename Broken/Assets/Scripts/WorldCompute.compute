@@ -6,7 +6,7 @@
 #pragma kernel InitializeRays
 #pragma kernel InitializeRaysTwo
 #pragma kernel InitializeChunkVisibilityTable
-#pragma kernel InitializeGlobalRayHeightTable
+#pragma kernel InitializeGlobalHeightTable
 #pragma kernel Noise
 #pragma kernel CheckFaces
 #pragma kernel PopulateRender 
@@ -46,9 +46,9 @@ RWStructuredBuffer<int> _Counter;
 AppendStructuredBuffer<uint> _RenderProperties;
 
 
-RWStructuredBuffer<uint> _GlobalRayHeightTable;
-RWStructuredBuffer<uint> _GlobalRaySolidTable;
-RWStructuredBuffer<uint> _GlobalRayShadowTable;
+RWStructuredBuffer<uint> _GlobalHeightTable;
+RWStructuredBuffer<uint> _GlobalSolidTable;
+RWStructuredBuffer<uint> _GlobalShadowTable;
 
 RWStructuredBuffer<uint> _ChunkVisibility;
 
@@ -86,7 +86,7 @@ uint globalWidth;
 uint globalStep;
 uint chunkStepDepth;
 
-//this will need to be changed
+//this will need to be changed for each table
 uint packedSize;
 uint heightBitSize;
 
@@ -552,7 +552,7 @@ bool CalcLocalVis(RWStructuredBuffer<TriIndex> edgeTable, StructuredBuffer<uint>
 	return _visibilityCheck;
 }
 
-//*****************************************************************************************************
+//****************************************************************************************************************************************************************************************************
 // Ray Methods
 uint GlobalIndexToGlobalX(uint globalIndex)
 {
@@ -636,41 +636,48 @@ uint AdjustedIndexToBit(uint adjustedIndex)
 }
 
 
-
-
 //** These methods specific to ray height
-uint GetRayHeightValue(uint adjustedIndex, RWStructuredBuffer<uint> globalRayHeightTable)
+uint GetHeightValue(uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalHeightTable)
 {
-	return ((globalRayHeightTable[AdjustedIndexToArray(adjustedIndex)] >> AdjustedIndexToBit(adjustedIndex)) & 15U);
+	return ((globalHeightTable[arrayIndex] >> bitIndex) & 0xF);
 }
 
-uint GetRayHeightValue(uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalRayHeightTable)
+uint GetHeightValue(uint arrayValue, uint bitIndex)
 {
-	return ((globalRayHeightTable[arrayIndex] >> bitIndex) & 0xF);
+	return ((arrayValue >> bitIndex) & 0xF);
 }
 
-void ClearRayHeightBitSequence(uint bitIndex, uint arrayIndex, RWStructuredBuffer<uint> globalRayHeightTable)
+uint ClearHeightBitSequence(uint bitIndex, uint arrayValue)
 {
-	InterlockedAnd(globalRayHeightTable[arrayIndex], ~(0xF << bitIndex * heightBitSize));
+	return arrayValue & ~(0xF << bitIndex * heightBitSize);
 }
 
-void SetRayHeightValue(uint value, uint adjustedIndex, uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalRayHeightTable)
+uint CreateHeightBitSequence(uint setValue, uint arrayValue, uint bitIndex)
 {
-	ClearRayHeightBitSequence(bitIndex, arrayIndex, globalRayHeightTable);
-	InterlockedOr(globalRayHeightTable[arrayIndex], (value << bitIndex * heightBitSize));
+	return ClearHeightBitSequence(bitIndex, arrayValue) | (setValue << bitIndex * heightBitSize);
+}
+void SetHeightValue(uint setValue, uint arrayValue, uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalHeightTable)
+{
+	uint tempOut = 0;
+	//destination, compare, input, out
+	InterlockedCompareExchange(globalHeightTable[arrayIndex], arrayValue, CreateHeightBitSequence(setValue, arrayValue, bitIndex), tempOut);
+	if (GetHeightValue(arrayIndex, bitIndex, globalHeightTable) > GetHeightValue(tempOut, bitIndex))
+	{
+		GlobalHeightMin
+	}
 }
 
-void GlobalRayHeightMin(uint adjustedIndex, uint arrayIndex, uint bitIndex, uint localIndex, RWStructuredBuffer<uint> globalRayHeightTable, RWStructuredBuffer<uint3> chunkTable)
+void GlobalHeightMin(uint arrayIndex, uint bitIndex, uint localIndex, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint3> chunkTable)
 {
-	SetRayHeightValue(min(GetRayHeightValue(arrayIndex, bitIndex, globalRayHeightTable), chunkTable[localIndex].y), adjustedIndex, arrayIndex, bitIndex, globalRayHeightTable);
+	SetHeightValue(min(GetHeightValue(arrayIndex, bitIndex, globalHeightTable), chunkTable[localIndex].y), globalHeightTable[arrayIndex], arrayIndex, bitIndex, globalHeightTable);
 }
 
-void calcChunkVisGlobalRayHeight(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> globalRayHeightTable, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint3> chunkPositionTable, uint localIndex, uint chunkIndex)
+void calcChunkVisGlobalHeight(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint3> chunkPositionTable, uint localIndex, uint chunkIndex)
 {
 	if ((meshProperties[localIndex].lowIndex & 0xFFF) != 0)
 	{
 		uint adjustedIndex = LocalIndexToAdjustedIndex(localIndex, chunkIndex, chunkTable, chunkPositionTable);
-		GlobalRayHeightMin(adjustedIndex, AdjustedIndexToArray(adjustedIndex), AdjustedIndexToBit(adjustedIndex), localIndex, globalRayHeightTable, chunkTable);
+		GlobalHeightMin(AdjustedIndexToArray(adjustedIndex), AdjustedIndexToBit(adjustedIndex), localIndex, globalHeightTable, chunkTable);
 	}
 }
 
@@ -746,9 +753,9 @@ void InitializeChunkVisibilityTable(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(1024, 1, 1)]
-void InitializeGlobalRayHeightTable(uint3 id: SV_DispatchThreadID)
+void InitializeGlobalHeightTable(uint3 id: SV_DispatchThreadID)
 {
-	_GlobalRayHeightTable[id.x] = 4294967295U;
+	_GlobalHeightTable[id.x] = 4294967295U;
 }
 
 [numthreads(1024, 1, 1)]
@@ -812,7 +819,7 @@ void ChunkVisibilityTable(uint3 id: SV_DispatchThreadID)
 {
 	calcChunkVis(_MeshProperties, _ChunkTable, _ChunkVisibilityTables, _EdgeTable, id.x);
 
-	calcChunkVisGlobalRayHeight(_MeshProperties, _ChunkTable, _GlobalRayHeightTable, _EdgeTable, _ChunkPositionTable, id.x, chunkIndex);
+	calcChunkVisGlobalHeight(_MeshProperties, _ChunkTable, _GlobalHeightTable, _EdgeTable, _ChunkPositionTable, id.x, chunkIndex);
 
 }
 

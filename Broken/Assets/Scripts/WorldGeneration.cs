@@ -40,7 +40,7 @@ public class WorldGeneration
     private ComputeBuffer cubeBuffer;
     private ComputeBuffer edgeBuffer;
     private ComputeBuffer tempBuffer;
-    private ComputeBuffer globalRayHeightBuffer;
+    private ComputeBuffer globalHeightBuffer;
     private ComputeBuffer[] mainBuffers = new ComputeBuffer[chunkCount];
     private ComputeBuffer[] renderBuffers = new ComputeBuffer[chunkCount];
     private ComputeBuffer[] visibilityBuffers = new ComputeBuffer[chunkCount];
@@ -148,10 +148,10 @@ public class WorldGeneration
         computeShader.Dispatch(initializeRaysKernelTwo, dispatchGroups, 1, 1);
         tempBuffer.Release();
 
-        int initializeGlobalRayHeightKernel = computeShader.FindKernel("InitializeGlobalRayHeightTable");
-        globalRayHeightBuffer = new ComputeBuffer(Mathf.CeilToInt(globalLeadingEdgeCount * chunkStepDepth / PackedSize()), sizeof(uint));
-        computeShader.SetBuffer(initializeGlobalRayHeightKernel, "_GlobalRayHeightTable", globalRayHeightBuffer);
-        computeShader.Dispatch(initializeGlobalRayHeightKernel, Mathf.CeilToInt(globalRayHeightBuffer.count / 1024f), 1, 1);
+        int initializeGlobalHeightKernel = computeShader.FindKernel("InitializeGlobalHeightTable");
+        globalHeightBuffer = new ComputeBuffer(Mathf.CeilToInt(globalLeadingEdgeCount * chunkStepDepth / PackedSize()), sizeof(uint));
+        computeShader.SetBuffer(initializeGlobalHeightKernel, "_GlobalHeightTable", globalHeightBuffer);
+        computeShader.Dispatch(initializeGlobalHeightKernel, Mathf.CeilToInt(globalHeightBuffer.count / 1024f), 1, 1);
         
 
         for (int i = 0; i < dummyBuffersOne.Length; i++)
@@ -196,19 +196,17 @@ public class WorldGeneration
             computeShader.SetBuffer(chunkVisTableKernel, "_ChunkTable", cubeBuffer);
             computeShader.SetBuffer(chunkVisTableKernel, "_ChunkVisibilityTables", visibilityBuffers[index]);
             computeShader.SetBuffer(chunkVisTableKernel, "_EdgeTable", edgeBuffer);
-            computeShader.SetBuffer(chunkVisTableKernel, "_GlobalRayHeightTable", globalRayHeightBuffer);
+            computeShader.SetBuffer(chunkVisTableKernel, "_GlobalHeightTable", globalHeightBuffer);
             computeShader.SetBuffer(chunkVisTableKernel, "_ChunkPositionTable", chunkPositionBuffer);
             computeShader.Dispatch(chunkVisTableKernel, dispatchGroups, 1, 1);
 
-            /*
-            test = new uint[globalRayBuffer.count];
-            globalRayBuffer.GetData(test);
-            Debug.Log(globalRayBuffer.count);
+            test = new uint[globalHeightBuffer.count];
+            globalHeightBuffer.GetData(test);
+            Debug.Log(globalHeightBuffer.count);
             for (int g = 0; g < test.Length; g++)
             {
                 Debug.Log(Convert.ToString(test[g], 2));
             }
-             */
 
 
 
@@ -892,7 +890,7 @@ public class WorldGeneration
         chunkEdgeBuffer.Release();
         cubeBuffer.Release();
         edgeBuffer.Release();
-        globalRayHeightBuffer.Release();
+        globalHeightBuffer.Release();
 
         foreach (ComputeBuffer c in dummyBuffersOne)
         {
