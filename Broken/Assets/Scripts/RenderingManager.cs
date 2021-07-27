@@ -49,7 +49,7 @@ public class RenderingManager : MonoBehaviour
     private WorldGeneration worldGen;
     private bool[] nullChecks;
 
-    private int cross = 32;
+    private int cross = 16;
 
     private void Start()
     {

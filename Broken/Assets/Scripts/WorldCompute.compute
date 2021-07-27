@@ -98,6 +98,17 @@ uint chunkIndex;
 uint topOffset;
 uint sameLevelOffset;
 
+//**************************************************
+//Bit index values DO NOT CHANGE
+//LocalEdgeTable 0-2 Leading Face identifier, 3-5 Trailing Face identifier, 6 leading sides identifer, 7-18 corresponding index in adjacent chunk, 19-30 corresponding ray index from any local index 
+static uint localEdgeTrailingFace = 3;
+static uint localEdgeLeadingSides = 6;
+static uint localEdgeNextIndex = 7;
+static uint localEdgeRayIndex = 19;
+
+//ChunkEdgeTable 0-2 Leading Face identifier, 3-5 Trailing Face identifier
+static uint chunkEdgeTrailingFace = 3;
+
 //
 // Description : Array and textureless GLSL 2D/3D/4D simplex 
 //               noise functions.
@@ -222,9 +233,47 @@ float noise(float3 x)
 			lerp(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
 }
 
-uint edgeChecks(bool isTop, bool isLeft, bool isRight, uint threadID, uint3 worldPos)
+//returns if an index is on its leading edge
+bool IsOnLeadingEdge(uint value, uint dimension)
 {
-	uint edgeCase = 0;
+	return value == (dimension - 1);
+}
+
+//returns if an index is on the trailing edge
+bool IsOnTrailingEdge(uint value)
+{
+	return value == 0;
+}
+
+//converts index to the x coordinate in any sytem
+uint IndexToXPosition(uint index, uint dimensionY, uint dimensionZ)
+{
+	return round(floor(index / (dimensionY * dimensionZ)));
+}
+
+//converts index to the y coordinate in any sytem
+uint IndexToYPosition(uint index, uint dimensionY, uint dimensionZ)
+{
+	return round(floor(index / dimensionZ) % dimensionY);
+}
+
+uint IndexToZPosition(uint index, uint dimensionZ)
+{
+	return round(index % dimensionZ);
+}
+//translates any index to a position
+uint3 IndexToPosition(uint index, uint dimensionY, uint dimensionZ)
+{
+	return uint3(IndexToXPosition(index, dimensionY, dimensionZ), IndexToYPosition(index, dimensionY, dimensionZ), IndexToZPosition(index, dimensionZ));
+}
+
+//edge check specific to the local level
+uint LocalEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkTable)
+{
+	bool isTop = IsOnLeadingEdge(chunkTable[localIndex].y, height);
+	bool isLeft = IsOnLeadingEdge(chunkTable[localIndex].x, length);
+	bool isRight = IsOnLeadingEdge(chunkTable[localIndex].z, width);
+	uint edgeCase;
 
 	if (isLeft)
 	{
@@ -235,19 +284,19 @@ uint edgeChecks(bool isTop, bool isLeft, bool isRight, uint threadID, uint3 worl
 				//this is the single index for the leading corner of the chunk
 				edgeCase = 0;
 
-				//store the adjacent index for this case
-				edgeCase |= (threadID - (cubeCount - 1)) << 5;
+				edgeCase |= (1U << localEdgeLeadingSides);
 
-				edgeCase |= (1U << 4);
+				//store the adjacent index for this case
+				edgeCase |= (localIndex - (cubeCount - 1)) << localEdgeNextIndex;
 			}
 			else
 			{
 				//Top Left
 				edgeCase = 1;
 
-				edgeCase |= (threadID - (cubeCount - (width + 1))) << 5;
+				edgeCase |= (1U << localEdgeLeadingSides);
 
-				edgeCase |= (1U << 4);
+				edgeCase |= (localIndex - (cubeCount - (width + 1))) << localEdgeNextIndex;
 			}
 		}
 		else
@@ -257,18 +306,18 @@ uint edgeChecks(bool isTop, bool isLeft, bool isRight, uint threadID, uint3 worl
 				//Diagonal Middle
 				edgeCase = 2;
 
-				edgeCase |= (threadID - (cubeCount - ((width * height) + 1))) << 5;
+				edgeCase |= (1U << localEdgeLeadingSides);
 
-				edgeCase |= (1U << 4);
+				edgeCase |= (localIndex - (cubeCount - ((width * height) + 1))) << localEdgeNextIndex;
 			}
 			else
 			{
 				//Middle Left
 				edgeCase = 3;
 
-				edgeCase |= (threadID - (cubeCount - ((width * height) + width))) << 5;
+				edgeCase |= (1U << localEdgeLeadingSides);
 
-				edgeCase |= (1U << 4);
+				edgeCase |= (localIndex - (cubeCount - ((width * height) + width))) << localEdgeNextIndex;
 			}
 		}
 	}
@@ -281,16 +330,16 @@ uint edgeChecks(bool isTop, bool isLeft, bool isRight, uint threadID, uint3 worl
 				//Top Right
 				edgeCase = 4;
 
-				edgeCase |= (threadID + 1) << 5;
+				edgeCase |= (1U << localEdgeLeadingSides);
 
-				edgeCase |= (1U << 4);
+				edgeCase |= (localIndex + 1) << localEdgeNextIndex;
 			}
 			else
 			{
 				//Top Middle
 				edgeCase = 5;
 
-				edgeCase |= (threadID + width + 1) << 5;
+				edgeCase |= (localIndex + width + 1) << localEdgeNextIndex;
 			}
 		}
 		else
@@ -300,9 +349,9 @@ uint edgeChecks(bool isTop, bool isLeft, bool isRight, uint threadID, uint3 worl
 				//Middle Right
 				edgeCase = 6;
 
-				edgeCase |= (threadID + (width * height) + 1) << 5;
+				edgeCase |= (1U << localEdgeLeadingSides);
 
-				edgeCase |= (1U << 4);
+				edgeCase |= (localIndex + (width * height) + 1) << localEdgeNextIndex;
 			}
 			else
 			{
@@ -311,27 +360,238 @@ uint edgeChecks(bool isTop, bool isLeft, bool isRight, uint threadID, uint3 worl
 		}
 	}
 
-	if (worldPos.x == 0 || worldPos.y == 0 || worldPos.z == 0)
+	bool isBottom = IsOnTrailingEdge(chunkTable[localIndex].y);
+	bool isTrailingRight = IsOnTrailingEdge(chunkTable[localIndex].x);
+	bool isTrailingLeft = IsOnTrailingEdge(chunkTable[localIndex].z);
+
+	if (isBottom)
 	{
-		//trailing face
-		edgeCase |= 1U << 3;
+		if (isTrailingLeft)
+		{
+			if (isTrailingRight)
+			{
+				//bottom cube, the 0th index
+				edgeCase |= (0 << localEdgeTrailingFace);
+			}
+			else
+			{
+				//bottom left
+				edgeCase |= (1 << localEdgeTrailingFace);
+			}
+		}
+		else
+		{
+			if (isTrailingRight)
+			{
+				//bottom right
+				edgeCase |= (2 << localEdgeTrailingFace);
+			}
+			else
+			{
+				//center bottom
+				edgeCase |= (3 << localEdgeTrailingFace);
+			}
+		}
+	}
+	else
+	{
+		if (isTrailingLeft)
+		{
+			if (isTrailingRight)
+			{
+				//diagonal middle
+				edgeCase |= (4 << localEdgeTrailingFace);
+			}
+			else
+			{
+				//middle left
+				edgeCase |= (5 << localEdgeTrailingFace);
+			}
+		}
+		else
+		{
+			if (isTrailingRight)
+			{
+				//middle right
+				edgeCase |= (6 << localEdgeTrailingFace);
+			}
+			else
+			{
+				//not on the trailing face
+				edgeCase |= (7 << localEdgeTrailingFace);
+			}
+		}
 	}
 
 	return edgeCase;
 }
 
+//edge check specific to the chunk level
+uint ChunkEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkPositionTable)
+{
+	bool isTop = IsOnLeadingEdge(chunkPositionTable[localIndex].y, yChunks);
+	bool isLeft = IsOnLeadingEdge(chunkPositionTable[localIndex].x, xChunks);
+	bool isRight = IsOnLeadingEdge(chunkPositionTable[localIndex].z, zChunks);
+	uint edgeCase;
+
+	if (isLeft)
+	{
+		if (isTop)
+		{
+			if (isRight)
+			{
+				//this is the single index for the leading corner of the chunk
+				edgeCase = 0;
+			}
+			else
+			{
+				//Top Left
+				edgeCase = 1;
+			}
+		}
+		else
+		{
+			if (isRight)
+			{
+				//Diagonal Middle
+				edgeCase = 2;
+			}
+			else
+			{
+				//Middle Left
+				edgeCase = 3;
+			}
+		}
+	}
+	else
+	{
+		if (isTop)
+		{
+			if (isRight)
+			{
+				//Top Right
+				edgeCase = 4;
+			}
+			else
+			{
+				//Top Middle
+				edgeCase = 5;
+			}
+		}
+		else
+		{
+			if (isRight)
+			{
+				//Middle Right
+				edgeCase = 6;
+			}
+			else
+			{
+				edgeCase = 7;
+			}
+		}
+	}
+
+	bool isBottom = IsOnTrailingEdge(chunkPositionTable[localIndex].y);
+	bool isTrailingRight = IsOnTrailingEdge(chunkPositionTable[localIndex].x);
+	bool isTrailingLeft = IsOnTrailingEdge(chunkPositionTable[localIndex].z);
+
+	if (isBottom)
+	{
+		if(isTrailingLeft)
+		{
+			if (isTrailingRight)
+			{
+				//bottom cube, the 0th index, just for my own reference
+				edgeCase |= (0 << chunkEdgeTrailingFace);
+			}
+			else
+			{
+				//bottom left
+				edgeCase |= (1 << chunkEdgeTrailingFace);
+			}
+		}
+		else
+		{
+			if (isTrailingRight)
+			{
+				//bottom right
+				edgeCase |= (2 << chunkEdgeTrailingFace);
+			}
+			else
+			{
+				//center bottom
+				edgeCase |= (3 << chunkEdgeTrailingFace);
+			}
+		}
+	}
+	else
+	{
+		if (isTrailingLeft)
+		{
+			if (isTrailingRight)
+			{
+				//diagonal middle
+				edgeCase |= (4 << chunkEdgeTrailingFace);
+			}
+			else
+			{
+				//middle left
+				edgeCase |= (5 << chunkEdgeTrailingFace);
+			}
+		}
+		else
+		{
+			if (isTrailingRight)
+			{
+				//middle right
+				edgeCase |= (6 << chunkEdgeTrailingFace);
+			}
+			else
+			{
+				//not on the trailing face
+				edgeCase |= (7 << chunkEdgeTrailingFace);
+			}
+		}
+	}
+
+	return edgeCase;
+}
+
+// returns the trailing face identifier 0-7
+uint TrailingFace(RWStructuredBuffer<uint> chunkEdgeTable, uint chunkIndex)
+{
+	return (chunkEdgeTable[chunkIndex] >> chunkEdgeTrailingFace) & 0x7;
+}
+
+uint TrailingFace(RWStructuredBuffer<TriIndex> edgeTable, uint localIndex)
+{
+	return (edgeTable[localIndex].lowIndex >> localEdgeTrailingFace) & 0x7;
+}
+
+//these return wheather the given index is on the trailing face based on a lookup table
+bool IsTrailingFace(RWStructuredBuffer<uint> chunkEdgeTable, uint chunkIndex)
+{
+	return TrailingFace(chunkEdgeTable, chunkIndex) != 7;
+}
+
+bool IsTrailingFace(RWStructuredBuffer<TriIndex> edgeTable, uint localIndex)
+{
+	return TrailingFace(edgeTable, localIndex) != 7;
+}
+
 void rayCalc(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint> tempTable, uint index)
 {
-	if (((edgeTable[index].lowIndex >> 3) & 1U) == 1U)
+	if (((edgeTable[index].lowIndex >> localEdgeTrailingFace) & 0x7) != 0)
 	{
 		uint tempIndex = index;
 
-		edgeTable[tempIndex].lowIndex |= tempTable[index] << 17;
+		edgeTable[tempIndex].lowIndex |= (tempTable[index] << localEdgeRayIndex);
 		edgeTable[tempTable[index]].highIndex = tempIndex;
 		while ((edgeTable[tempIndex].lowIndex & 0x7) == 7)
 		{
 			tempIndex += stepIndex;
-			edgeTable[tempIndex].lowIndex |= tempTable[index] << 17;
+			edgeTable[tempIndex].lowIndex |= (tempTable[index] << localEdgeRayIndex);
 		}
 
 		edgeTable[tempTable[index]].highIndex |= tempIndex << 13;
@@ -340,9 +600,9 @@ void rayCalc(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint> te
 
 void rayCalcTwo(RWStructuredBuffer<TriIndex>  edgeTable, RWStructuredBuffer<uint> tempTable, uint index)
 {
-	if (((edgeTable[index].lowIndex >> 3) & 1U) == 1U)
+	if (((edgeTable[index].lowIndex >> localEdgeTrailingFace) & 0x7) != 0)
 	{
-		edgeTable[tempTable[index]].thirdIndex = edgeTable[(edgeTable[edgeTable[tempTable[index]].highIndex >> 13].lowIndex >> 5) & 0xFFF].lowIndex >> 17;
+		edgeTable[tempTable[index]].thirdIndex = edgeTable[(edgeTable[edgeTable[tempTable[index]].highIndex >> 13].lowIndex >> localEdgeNextIndex) & 0xFFF].lowIndex >> localEdgeRayIndex;
 	}
 }
 
@@ -353,7 +613,7 @@ uint visMethod(RWStructuredBuffer<int> counter, RWStructuredBuffer<DualIndex> me
 		InterlockedAdd(counter[0], 1);
 		meshProperties[index].lowIndex |= 1U << 12 + crossHeight;
 		meshProperties[index].lowIndex |= 1U << 13 + crossHeight;
-		while (((edgeTable[index].lowIndex >> 3) & 1U) == 0U)
+		while (((edgeTable[index].lowIndex >> localEdgeTrailingFace) & 0x7) == 7)
 		{
 			index -= stepIndex;
 			meshProperties[index].lowIndex |= 1U << 13 + crossHeight;
@@ -365,7 +625,7 @@ uint visMethod(RWStructuredBuffer<int> counter, RWStructuredBuffer<DualIndex> me
 void skipMethod(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, uint crossHeight)
 {
 	meshProperties[index].lowIndex |= 1U << 13 + crossHeight;
-	while (((edgeTable[index].lowIndex >> 3) & 1U) == 0U)
+	while (((edgeTable[index].lowIndex >> localEdgeTrailingFace) & 0x7) == 7)
 	{
 		index -= stepIndex;
 		meshProperties[index].lowIndex |= 1U << 13 + crossHeight;
@@ -378,7 +638,7 @@ void calculateVisibility(RWStructuredBuffer<int> counter, RWStructuredBuffer<Dua
 	if (visibilityCheck)
 	{
 		index = visMethod(counter, meshProperties, edgeTable, index, crossHeight);
-		while (((edgeTable[index].lowIndex >> 3) & 1U) == 0U)
+		while (((edgeTable[index].lowIndex >> localEdgeTrailingFace) & 0x7) == 7)
 		{
 			index -= stepIndex;
 			index = visMethod(counter, meshProperties, edgeTable, index, crossHeight);
@@ -400,7 +660,7 @@ uint visMethodHighIndex(RWStructuredBuffer<int> counter, RWStructuredBuffer<Dual
 		InterlockedAdd(counter[0], 1);
 		meshProperties[index].highIndex |= 1U << crossHeight;
 		meshProperties[index].highIndex |= 1U << 1 + crossHeight;
-		while (((edgeTable[index].lowIndex >> 3) & 1U) == 0U)
+		while (((edgeTable[index].lowIndex >> localEdgeTrailingFace) & 0x7) == 7)
 		{
 			index -= stepIndex;
 			meshProperties[index].highIndex |= 1U << 1 + crossHeight;
@@ -412,7 +672,7 @@ uint visMethodHighIndex(RWStructuredBuffer<int> counter, RWStructuredBuffer<Dual
 void skipMethodHighIndex(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, uint crossHeight)
 {
 	meshProperties[index].highIndex |= 1U << 1 + crossHeight;
-	while (((edgeTable[index].lowIndex >> 3) & 1U) == 0U)
+	while (((edgeTable[index].lowIndex >> localEdgeTrailingFace) & 0x7) == 7)
 	{
 		index -= stepIndex;
 		meshProperties[index].highIndex |= 1U << 1 + crossHeight;
@@ -424,7 +684,7 @@ void calculateVisibilityHighIndex(RWStructuredBuffer<int> counter, RWStructuredB
 	if (visibilityCheck)
 	{
 		index = visMethodHighIndex(counter, meshProperties, edgeTable, index, crossHeight);
-		while (((edgeTable[index].lowIndex >> 3) & 1U) == 0U)
+		while (((edgeTable[index].lowIndex >> localEdgeTrailingFace) & 0x7) == 7)
 		{
 			index -= stepIndex;
 			index = visMethodHighIndex(counter, meshProperties, edgeTable, index, crossHeight);
@@ -443,7 +703,7 @@ void calcChunkVis(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuff
 {
 	if ((meshProperties[index].lowIndex & 0xFFF) != 0)
 	{
-		InterlockedMin(chunkVisibilityTable[edgeTable[index].lowIndex >> 17], chunkTable[index].y);
+		InterlockedMin(chunkVisibilityTable[edgeTable[index].lowIndex >> localEdgeRayIndex], chunkTable[index].y);
 	}
 }
 
@@ -451,7 +711,7 @@ void calcChunkVisTwo(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredB
 {
 	if ((meshProperties[index].lowIndex & 0xFFF) != 0)
 	{
-		InterlockedOr(chunkVisibilityTable[edgeTable[index].lowIndex >> 17], 1U << 4);
+		InterlockedOr(chunkVisibilityTable[edgeTable[index].lowIndex >> localEdgeRayIndex], 1U << 4);
 	}
 }
 
@@ -504,7 +764,7 @@ uint LocalIndexToNext(uint localIndex, RWStructuredBuffer<TriIndex> edgeTable)
 //returns the local ray index from a local index
 uint LocalIndexToLocalRay(uint localIndex, RWStructuredBuffer<TriIndex> edgeTable)
 {
-	return edgeTable[localIndex].lowIndex >> 17;
+	return edgeTable[localIndex].lowIndex >> localEdgeRayIndex;
 }
 
 //returns the ray index of the corresponding next chunk in a ray
@@ -534,7 +794,7 @@ bool CalcLocalVis(RWStructuredBuffer<TriIndex> edgeTable, StructuredBuffer<uint>
 		}
 		else
 		{
-			if (_trueHeight < ((nextChunk[edgeTable[(edgeTable[index].lowIndex >> 5) & 0xFFF].lowIndex >> 17] & 0xF) + _yOffset + 1))
+			if (_trueHeight < ((nextChunk[edgeTable[(edgeTable[index].lowIndex >> localEdgeNextIndex) & 0xFFF].lowIndex >> localEdgeRayIndex] & 0xF) + _yOffset + 1))
 			{
 				_visibilityCheck = true;
 			}
@@ -554,30 +814,115 @@ bool CalcLocalVis(RWStructuredBuffer<TriIndex> edgeTable, StructuredBuffer<uint>
 
 //****************************************************************************************************************************************************************************************************
 // Ray Methods
-uint GlobalIndexToGlobalX(uint globalIndex)
+
+uint3 LocalIndexToPos(uint localIndex, RWStructuredBuffer<uint3> chunkTable)
 {
-	return round(floor(globalIndex / (globalHeight * globalWidth)));
+	return chunkTable[localIndex];
 }
 
-uint GlobalIndexToGlobalY(uint globalIndex)
+uint3 LocalPosToGlobal(uint3 localPos, RWStructuredBuffer<uint3> chunkPositionTable, uint chunkIndex)
 {
-	return round(floor(globalIndex / globalWidth) % globalHeight);
+	return uint3(localPos.x + (chunkPositionTable[chunkIndex].x * length), localPos.y + (chunkPositionTable[chunkIndex].y * height), localPos.z + (chunkPositionTable[chunkIndex].z * width));
 }
 
-uint GlobalIndexToRay(uint globalIndex)
+uint GlobalPosToIndex(uint3 globalPos, uint globalHeight, uint globalWidth)
 {
-	return globalIndex - (((GlobalIndexToGlobalX(globalIndex) - 1) * (globalWidth - 1) * (globalHeight - 1)) + ((GlobalIndexToGlobalY(globalIndex) - 1) * (globalWidth - 1)) );
+	return (globalPos.x * globalHeight * globalWidth) + (globalPos.y * globalWidth) + globalPos.z;
 }
 
-uint LocalIndexToGlobal(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable)
+uint LocalIndexToGlobal(uint localIndex, uint chunkIndex, uint globalHeight, uint globalWidth, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable)
 {
-	return localIndex + (chunkTable[localIndex].y * width) + (chunkTable[localIndex].x * width * height) + (chunkPositionTable[chunkIndex].z * width) + (chunkPositionTable[chunkIndex].y * width * height * zChunks)
-		+ (chunkPositionTable[chunkIndex].x * length * width * height * zChunks * yChunks);
+	return GlobalPosToIndex(LocalPosToGlobal(LocalIndexToPos(localIndex, chunkTable), chunkPositionTable, chunkIndex), globalHeight, globalWidth);
 }
 
-uint GlobalIndexToRayStartingIndex(uint globalIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable)
+
+//returns the global index of the ray start ****THIS IS NOT THE PROPER RAY INDEX****
+//do not use this dogshit function for testing only
+uint GlobalIndexToRayStartingIndex(uint globalIndex, uint localIndex, uint chunkIndex, RWStructuredBuffer<uint> chunkEdgeTable, RWStructuredBuffer<TriIndex> edgeTable)
 {
-	if(chunkPositionTable[chunkIndex].x == 0 || chunkPositionTable[chunkIndex].y == 0 || chunkPositionTable[chunkIndex].z == 0)
+	    [branch] switch (TrailingFace(chunkEdgeTable, chunkIndex))
+		{
+		//origin position
+		case 0:
+			if (TrailingFace(edgeTable, localIndex) == 7)
+			{
+				return globalIndex % globalStep;
+			}
+			else
+			{
+				return globalIndex;
+			}
+		//bottom left
+		case 1:
+			if (TrailingFace(edgeTable, localIndex) == 6 || TrailingFace(edgeTable, localIndex) == 7)
+			{
+				return globalIndex % globalStep;
+			}
+			else
+			{
+				return globalIndex;
+			}
+		//bottom right
+		case 2:
+			if (TrailingFace(edgeTable, localIndex) == 5 || TrailingFace(edgeTable, localIndex) == 7)
+			{
+				return globalIndex % globalStep;
+			}
+			else
+			{
+				return globalIndex;
+			}
+		//center bottom
+		case 3:
+			if (TrailingFace(edgeTable, localIndex) == 3)
+			{
+				return globalIndex;
+			}
+			else 
+			{
+				return globalIndex % globalStep;
+			}
+		//diagonal middle
+		case 4:
+			if (TrailingFace(edgeTable, localIndex) == 3)
+			{
+				return globalIndex % globalStep;
+			}
+			else
+			{
+				return globalIndex;
+			}
+		//middle left
+		case 5:
+			if (TrailingFace(edgeTable, localIndex) == 0 || TrailingFace(edgeTable, localIndex) == 1 || TrailingFace(edgeTable, localIndex) == 4 || TrailingFace(edgeTable, localIndex) == 5)
+			{
+				return globalIndex;
+			}
+			else
+			{
+				return globalIndex % globalStep;
+			}
+		//middle right
+		case 6:
+			if (TrailingFace(edgeTable, localIndex) == 0 || TrailingFace(edgeTable, localIndex) == 2 || TrailingFace(edgeTable, localIndex) == 4 || TrailingFace(edgeTable, localIndex) == 6)
+			{
+				return globalIndex;
+			}
+			else
+			{
+				return globalIndex % globalStep;
+			}
+		case 7:
+			return globalIndex % globalStep;
+		//this will never happen
+		default:
+			return 0;
+		}
+}
+
+uint GlobalIndexToRayStartingIndex(uint globalIndex, uint chunkIndex, RWStructuredBuffer<uint> chunkEdgeTable)
+{
+	if (IsTrailingFace(chunkEdgeTable, chunkIndex))
 	{
 		if (globalIndex <= (globalHeight * globalWidth) - 1)
 		{
@@ -591,15 +936,13 @@ uint GlobalIndexToRayStartingIndex(uint globalIndex, uint chunkIndex, RWStructur
 			}
 			else
 			{
-				if (globalIndex % (globalWidth * globalHeight) <= globalWidth - 1)
+				if (globalIndex % (globalWidth * globalHeight) <= globalWidth - 1U)
 				{
 					return globalIndex;
 				}
 				else
 				{
-					//this should never happen, error if seen
-
-					return 4294967295U;
+					return globalIndex % globalStep;
 				}
 			}
 		}
@@ -608,6 +951,27 @@ uint GlobalIndexToRayStartingIndex(uint globalIndex, uint chunkIndex, RWStructur
 	{
 		return globalIndex % globalStep;
 	}
+}
+
+uint RetardClamp(uint valueIn)
+{
+	if (valueIn < 2)
+	{
+		return 0;
+	}
+	else
+	{
+		return valueIn - 1;
+	}
+}
+uint RayStartingIndexToRay(uint rayStartingIndex)
+{
+	return rayStartingIndex - (RetardClamp(IndexToXPosition(rayStartingIndex, globalHeight, globalWidth)) * (globalHeight - 1) * (globalWidth - 1) + RetardClamp(IndexToYPosition(rayStartingIndex, globalHeight, globalWidth)) * (globalWidth - 1));
+}
+
+uint LocalIndexToRayIndex(uint localIndex, uint chunkIndex, uint globalHeight, uint globalWidth, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable)
+{
+	 return RayStartingIndexToRay(GlobalIndexToRayStartingIndex(GlobalPosToIndex(LocalPosToGlobal(LocalIndexToPos(localIndex, chunkTable), chunkPositionTable, chunkIndex), globalHeight, globalWidth), chunkIndex, chunkEdgeTable));
 }
 
 uint ChunkIndexToRayStep(uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable)
@@ -622,8 +986,16 @@ uint RayIndexToAdjustedIndex(uint rayStep, uint rayIndex)
 
 uint LocalIndexToAdjustedIndex(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable)
 {
-	return RayIndexToAdjustedIndex(ChunkIndexToRayStep(chunkIndex, chunkPositionTable), GlobalIndexToRay(GlobalIndexToRayStartingIndex(LocalIndexToGlobal(localIndex, chunkIndex, chunkTable, chunkPositionTable), chunkIndex, chunkPositionTable)));
+	//return RayIndexToAdjustedIndex(ChunkIndexToRayStep(chunkIndex, chunkPositionTable), GlobalIndexToRay(GlobalIndexToRayStartingIndex(LocalIndexToGlobal(localIndex, chunkIndex, chunkTable, chunkPositionTable), chunkIndex, chunkPositionTable)));
 }
+
+void calcNEWTEMPvis(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable,  RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<TriIndex> edgeTable)
+{
+	globalHeightTable[localIndex] = GlobalPosToIndex(LocalPosToGlobal(LocalIndexToPos(localIndex, chunkTable), chunkPositionTable, chunkIndex), globalHeight, globalWidth);
+}
+
+
+//** These methods specific to ray height
 
 uint AdjustedIndexToArray(uint adjustedIndex)
 {
@@ -635,8 +1007,6 @@ uint AdjustedIndexToBit(uint adjustedIndex)
 	return (adjustedIndex % packedSize);
 }
 
-
-//** These methods specific to ray height
 uint GetHeightValue(uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalHeightTable)
 {
 	return ((globalHeightTable[arrayIndex] >> bitIndex) & 0xF);
@@ -647,29 +1017,14 @@ uint GetHeightValue(uint arrayValue, uint bitIndex)
 	return ((arrayValue >> bitIndex) & 0xF);
 }
 
-uint ClearHeightBitSequence(uint bitIndex, uint arrayValue)
+uint HeightComparisonSequence(uint localHeight, uint arrayValue, uint bitIndex)
 {
-	return arrayValue & ~(0xF << bitIndex * heightBitSize);
-}
-
-uint CreateHeightBitSequence(uint setValue, uint arrayValue, uint bitIndex)
-{
-	return ClearHeightBitSequence(bitIndex, arrayValue) | (setValue << bitIndex * heightBitSize);
-}
-void SetHeightValue(uint setValue, uint arrayValue, uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalHeightTable)
-{
-	uint tempOut = 0;
-	//destination, compare, input, out
-	InterlockedCompareExchange(globalHeightTable[arrayIndex], arrayValue, CreateHeightBitSequence(setValue, arrayValue, bitIndex), tempOut);
-	if (GetHeightValue(arrayIndex, bitIndex, globalHeightTable) > GetHeightValue(tempOut, bitIndex))
-	{
-		GlobalHeightMin
-	}
+	return (arrayValue & ~(0xF << bitIndex * heightBitSize)) | (localHeight << bitIndex * heightBitSize);
 }
 
 void GlobalHeightMin(uint arrayIndex, uint bitIndex, uint localIndex, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint3> chunkTable)
 {
-	SetHeightValue(min(GetHeightValue(arrayIndex, bitIndex, globalHeightTable), chunkTable[localIndex].y), globalHeightTable[arrayIndex], arrayIndex, bitIndex, globalHeightTable);
+	InterlockedMin(globalHeightTable[arrayIndex], HeightComparisonSequence(chunkTable[localIndex].y, globalHeightTable[arrayIndex], bitIndex));
 }
 
 void calcChunkVisGlobalHeight(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint3> chunkPositionTable, uint localIndex, uint chunkIndex)
@@ -706,9 +1061,9 @@ void InitializeCubes(uint3 id : SV_DispatchThreadID)
 	_EdgeTable[id.x].thirdIndex = 0;
 
 	//fill the reference table
-	_ChunkTable[id.x] = uint3(round(floor(id.x / (height * width))), round(floor(id.x / width) % height), round(id.x % width));
+	_ChunkTable[id.x] = IndexToPosition(id.x, height, width);
 	//call the edgeCheck method
-	_EdgeTable[id.x].lowIndex = edgeChecks((_ChunkTable[id.x].y == (height - 1)), (_ChunkTable[id.x].x == (length - 1)), (_ChunkTable[id.x].z == (width - 1)), id.x, _ChunkTable[id.x]);
+	_EdgeTable[id.x].lowIndex = LocalEdgeChecks(id.x, _ChunkTable);
 }
 
 [numthreads(1024, 1, 1)]
@@ -716,8 +1071,8 @@ void InitializeChunks(uint3 id : SV_DispatchThreadID)
 {
 	_ChunkEdgeTable[id.x] = 0;
 
-	_ChunkPositionTable[id.x] = uint3(round(floor(id.x / (yChunks * zChunks))), round(floor(id.x / zChunks) % yChunks), round(id.x % zChunks));
-	_ChunkEdgeTable[id.x] = edgeChecks((_ChunkPositionTable[id.x].y == (yChunks - 1)), (_ChunkPositionTable[id.x].x == (xChunks - 1)), (_ChunkPositionTable[id.x].z == (zChunks - 1)), id.x, _ChunkPositionTable[id.x]);
+	_ChunkPositionTable[id.x] = IndexToPosition(id.x, yChunks, zChunks);
+	_ChunkEdgeTable[id.x] = ChunkEdgeChecks(id.x, _ChunkPositionTable);
 }
 
 [numthreads(1, 1, 1)]
@@ -772,7 +1127,7 @@ void Noise(uint3 id : SV_DispatchThreadID)
 	}
 	else
 	{
-		_MeshProperties[id.x].lowIndex = 0;
+		_MeshProperties[id.x].lowIndex = 1;
 	}
 }
 
@@ -819,8 +1174,9 @@ void ChunkVisibilityTable(uint3 id: SV_DispatchThreadID)
 {
 	calcChunkVis(_MeshProperties, _ChunkTable, _ChunkVisibilityTables, _EdgeTable, id.x);
 
-	calcChunkVisGlobalHeight(_MeshProperties, _ChunkTable, _GlobalHeightTable, _EdgeTable, _ChunkPositionTable, id.x, chunkIndex);
-
+	//calcChunkVisGlobalHeight(_MeshProperties, _ChunkTable, _GlobalHeightTable, _EdgeTable, _ChunkPositionTable, id.x, chunkIndex);
+	
+	calcNEWTEMPvis(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _MeshProperties, _GlobalHeightTable, _EdgeTable);
 }
 
 [numthreads(1024, 1, 1)]
@@ -1008,7 +1364,7 @@ void CoolCull(uint3 id : SV_DispatchThreadID)
 
 	if (_ChunkTable[id.x].y <= crossHeight)
 	{
-		if (_ChunkTable[id.x].y == crossHeight || ((_EdgeTable[id.x].lowIndex >> 4) & 1U) == 1)
+		if (_ChunkTable[id.x].y == crossHeight || ((_EdgeTable[id.x].lowIndex >> localEdgeLeadingSides) & 1U) == 1)
 		{
 			bool visibilityCheck = false;
 			bool skip = 1;
@@ -1022,10 +1378,10 @@ void CoolCull(uint3 id : SV_DispatchThreadID)
 				visibilityCheck = true;
 				break;
 			case 2:
-				visibilityCheck = ((_IntDiagonalMiddleChunk[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 13) ^ 1U);
+				visibilityCheck = ((_IntDiagonalMiddleChunk[(_EdgeTable[id.x].lowIndex >> localEdgeNextIndex) & 0xFFF].lowIndex >> 13) ^ 1U);
 				break;
 			case 3:
-				visibilityCheck = ((_IntMiddleLeftChunk[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 13) ^ 1U);
+				visibilityCheck = ((_IntMiddleLeftChunk[(_EdgeTable[id.x].lowIndex >> localEdgeNextIndex) & 0xFFF].lowIndex >> 13) ^ 1U);
 				break;
 			case 4:
 				visibilityCheck = true;
@@ -1034,7 +1390,7 @@ void CoolCull(uint3 id : SV_DispatchThreadID)
 				visibilityCheck = true;
 				break;
 			case 6:
-				visibilityCheck = ((_IntMiddleRightChunk[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 13) ^ 1U);
+				visibilityCheck = ((_IntMiddleRightChunk[(_EdgeTable[id.x].lowIndex >> localEdgeNextIndex) & 0xFFF].lowIndex >> 13) ^ 1U);
 				break;
 			case 7:
 				visibilityCheck = true;

@@ -9,9 +9,9 @@ public class WorldGeneration
     private ComputeShader computeShader;
     private bool chunkInfo;
 
-    private static readonly int xChunks = 2;
-    private static readonly int yChunks = 2;
-    private static readonly int zChunks = 2;
+    private static readonly int xChunks = 1;
+    private static readonly int yChunks = 1;
+    private static readonly int zChunks = 1;
     private static int chunkCount = xChunks * yChunks * zChunks;
 
     private static int length = 16;
@@ -69,18 +69,21 @@ public class WorldGeneration
     {
         computeShader.SetInt("stepIndex", step);
         computeShader.SetInt("cubeCount", cubeCount);
-        // ?? check this
+        computeShader.SetInt("xChunks", xChunks);
+        computeShader.SetInt("yChunks", yChunks);
+        computeShader.SetInt("zChunks", zChunks);
+        computeShader.SetInt("length", length);
         computeShader.SetInt("height", height);
-        //
+        computeShader.SetInt("width", width);
         computeShader.SetInt("packedSize", PackedSize());
         computeShader.SetInt("leadingEdgeCount", leadingEdgeCount);
         computeShader.SetInt("globalLength", globalLength);
         computeShader.SetInt("globalHeight", globalHeight);
         computeShader.SetInt("globalWidth", globalWidth);
         computeShader.SetInt("globalStep", globalStep);
-        //rename globalstepdepth to chunkDepth misleading?
         computeShader.SetInt("chunkStepDepth", chunkStepDepth);
         computeShader.SetInt("heightBitSize", HeightToBits(height));
+
         for (int i = 0; i < chunkCount; i++)
         {
             xOffset[i] = Mathf.FloorToInt(i / (yChunks * zChunks)) * length;
@@ -108,9 +111,6 @@ public class WorldGeneration
             */
         }
 
-        computeShader.SetInt("xChunks", xChunks);
-        computeShader.SetInt("yChunks", yChunks);
-        computeShader.SetInt("zChunks", zChunks);
         int initilializeChunkKernel = computeShader.FindKernel("InitializeChunks");
         chunkEdgeBuffer = new ComputeBuffer(chunkCount, sizeof(uint));
         chunkPositionBuffer = new ComputeBuffer(chunkCount, sizeof(uint) * 3);
@@ -120,9 +120,6 @@ public class WorldGeneration
         chunkEdgeBuffer.GetData(chunkEdgeTable);
         chunkPositionBuffer.GetData(chunkPositionTable);
 
-        computeShader.SetInt("length", length);
-        computeShader.SetInt("height", height);
-        computeShader.SetInt("width", width);
         int initializeKernel = computeShader.FindKernel("InitializeCubes");
         cubeBuffer = new ComputeBuffer(cubeCount, sizeof(uint) * 3);
         edgeBuffer = new ComputeBuffer(cubeCount, sizeof(uint) * 3);
@@ -149,7 +146,10 @@ public class WorldGeneration
         tempBuffer.Release();
 
         int initializeGlobalHeightKernel = computeShader.FindKernel("InitializeGlobalHeightTable");
-        globalHeightBuffer = new ComputeBuffer(Mathf.CeilToInt(globalLeadingEdgeCount * chunkStepDepth / PackedSize()), sizeof(uint));
+        Debug.Log(globalLeadingEdgeCount);
+        //change to this when packed ready
+        //globalHeightBuffer = new ComputeBuffer(Mathf.CeilToInt(globalLeadingEdgeCount * chunkStepDepth / PackedSize()), sizeof(uint));
+        globalHeightBuffer = new ComputeBuffer(cubeCount * chunkCount, sizeof(uint));
         computeShader.SetBuffer(initializeGlobalHeightKernel, "_GlobalHeightTable", globalHeightBuffer);
         computeShader.Dispatch(initializeGlobalHeightKernel, Mathf.CeilToInt(globalHeightBuffer.count / 1024f), 1, 1);
         
@@ -198,17 +198,8 @@ public class WorldGeneration
             computeShader.SetBuffer(chunkVisTableKernel, "_EdgeTable", edgeBuffer);
             computeShader.SetBuffer(chunkVisTableKernel, "_GlobalHeightTable", globalHeightBuffer);
             computeShader.SetBuffer(chunkVisTableKernel, "_ChunkPositionTable", chunkPositionBuffer);
+            computeShader.SetBuffer(chunkVisTableKernel, "_ChunkEdgeTable", chunkEdgeBuffer);
             computeShader.Dispatch(chunkVisTableKernel, dispatchGroups, 1, 1);
-
-            test = new uint[globalHeightBuffer.count];
-            globalHeightBuffer.GetData(test);
-            Debug.Log(globalHeightBuffer.count);
-            for (int g = 0; g < test.Length; g++)
-            {
-                Debug.Log(Convert.ToString(test[g], 2));
-            }
-
-
 
             int chunkVisTableKernelTwo = computeShader.FindKernel("ChunkVisibilityTableTwo");
             computeShader.SetBuffer(chunkVisTableKernelTwo, "_MeshProperties", mainBuffers[index]);
@@ -348,6 +339,14 @@ public class WorldGeneration
                 Debug.Log("Chunk Index: " + index + ", " + Convert.ToString(g >> 5, 2));
             }
              */
+        }
+
+        test = new uint[globalHeightBuffer.count];
+        globalHeightBuffer.GetData(test);
+        Debug.Log(globalHeightBuffer.count);
+        for (int g = 0; g < test.Length; g++)
+        {
+            Debug.Log(test[g]);
         }
     }
 
