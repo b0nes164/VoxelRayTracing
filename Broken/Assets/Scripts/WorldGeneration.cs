@@ -146,10 +146,9 @@ public class WorldGeneration
         tempBuffer.Release();
 
         int initializeGlobalHeightKernel = computeShader.FindKernel("InitializeGlobalHeightTable");
-        Debug.Log(globalLeadingEdgeCount);
         //change to this when packed ready
         //globalHeightBuffer = new ComputeBuffer(Mathf.CeilToInt(globalLeadingEdgeCount * chunkStepDepth / PackedSize()), sizeof(uint));
-        globalHeightBuffer = new ComputeBuffer(cubeCount * chunkCount, sizeof(uint));
+        globalHeightBuffer = new ComputeBuffer(Mathf.CeilToInt(globalLeadingEdgeCount * chunkStepDepth), sizeof(uint));
         computeShader.SetBuffer(initializeGlobalHeightKernel, "_GlobalHeightTable", globalHeightBuffer);
         computeShader.Dispatch(initializeGlobalHeightKernel, Mathf.CeilToInt(globalHeightBuffer.count / 1024f), 1, 1);
         
@@ -213,9 +212,10 @@ public class WorldGeneration
             visibilityBuffers[index].GetData(test);
             foreach (uint g in test)
             {
-                Debug.Log(Convert.ToString(g, 2));
+                Debug.Log(g & 0xF);
             }
-            */
+             */
+
 
             int chunkGlobalVisKernel = computeShader.FindKernel("ChunkGlobalVis");
             computeShader.SetBuffer(chunkGlobalVisKernel, "_ChunkVisibilityTables", visibilityBuffers[index]);
@@ -343,7 +343,6 @@ public class WorldGeneration
 
         test = new uint[globalHeightBuffer.count];
         globalHeightBuffer.GetData(test);
-        Debug.Log(globalHeightBuffer.count);
         for (int g = 0; g < test.Length; g++)
         {
             Debug.Log(test[g]);
