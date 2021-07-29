@@ -1,17 +1,20 @@
 #pragma kernel ZeroCounter
 #pragma kernel InitializeDummyChunks
+#pragma kernel InitializeChunkVisibilityTable
+#pragma kernel InitializeGlobalHeightTable
+#pragma kernel InitializeGlobalSolidBuffer
+#pragma kernel InitializeLocalTransferBuffers
 #pragma kernel InitializeCubes
 #pragma kernel InitializeChunks
 #pragma kernel SingleThread
 #pragma kernel InitializeRays
 #pragma kernel InitializeRaysTwo
-#pragma kernel InitializeChunkVisibilityTable
-#pragma kernel InitializeGlobalHeightTable
 #pragma kernel Noise
 #pragma kernel CheckFaces
 #pragma kernel PopulateRender 
 #pragma kernel ChunkVisibilityTable
 #pragma kernel ChunkVisibilityTableTwo
+#pragma kernel TransferGlobalHeights
 #pragma kernel ChunkGlobalVis
 #pragma kernel ChunkGlobalVisTwo
 #pragma kernel StupidCull
@@ -46,6 +49,7 @@ RWStructuredBuffer<int> _Counter;
 AppendStructuredBuffer<uint> _RenderProperties;
 
 RWStructuredBuffer<uint> HeightTransferBuffer;
+RWStructuredBuffer<uint> SolidTransferBuffer;
 
 RWStructuredBuffer<uint> _GlobalHeightTable;
 RWStructuredBuffer<uint> _GlobalSolidTable;
@@ -88,8 +92,8 @@ extern uint globalStep;
 extern uint chunkStepDepth;
 
 //This will need to be changed for each table
-extern uint packedSize;
-extern uint heightBitSize;
+extern uint e_heightPackedSize;
+extern uint e_solidPackedSize;
 
 extern bool topEdge;
 extern uint crossHeight;
@@ -559,6 +563,9 @@ uint ChunkEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkPositionTab
 	return edgeCase;
 }
 
+//***********************************************************************************************************************************************************
+//Reference Table Conversions
+
 // returns the trailing face identifier 0-7
 uint TrailingFace(RWStructuredBuffer<uint> chunkEdgeTable, uint chunkIndex)
 {
@@ -581,6 +588,19 @@ bool IsTrailingFace(RWStructuredBuffer<TriIndex> edgeTable, uint localIndex)
 	return TrailingFace(edgeTable, localIndex) != 7;
 }
 
+//Returns the localIndex of the bottom of a local ray
+uint LocalRayToBottom(uint localRayIndex, RWStructuredBuffer<TriIndex> edgeTable)
+{
+	return edgeTable[localRayIndex].highIndex & 4095U;
+}
+
+//Returns the localIndex of the top of a local ray
+uint LocalRayToTop(uint localRayIndex, RWStructuredBuffer<TriIndex> edgeTable)
+{
+	return edgeTable[localRayIndex].highIndex & 16773120U;
+}
+
+//Creates the lookup table for the following conversions: localIndex to localRayIndex; localRayIndex to Top, Bottom 
 void rayCalc(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint> tempTable, uint index)
 {
 	if (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) != 0)
@@ -599,6 +619,7 @@ void rayCalc(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint> te
 	}
 }
 
+//Creates the lookup table for the following conversion:
 void rayCalcTwo(RWStructuredBuffer<TriIndex>  edgeTable, RWStructuredBuffer<uint> tempTable, uint index)
 {
 	if (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) != 0)
@@ -785,6 +806,7 @@ bool IsNextChunkSolid(uint localIndex, StructuredBuffer<uint> nextChunk, RWStruc
 {
 	return ((nextChunk[LocalIndexToNextRay(localIndex, edgeTable)] >> 4) & 1U) == 1;
 }
+
 bool CalcLocalVis(RWStructuredBuffer<TriIndex> edgeTable, StructuredBuffer<uint> nextChunk, bool _visibilityCheck, uint index, uint _bitIndex, uint _yOffset, uint _trueHeight)
 {
 	if (IsNextChunkInShadow(index, _bitIndex, nextChunk, edgeTable))
@@ -1012,7 +1034,6 @@ uint LocalIndexToRayIndex(uint localIndex, uint chunkIndex, RWStructuredBuffer<u
 //****************************************************************************************************************************************************************************************
 //This section contains the methods used to pack the height values into buffer to save on memory
 //this should be set externally because its only called once per chunk
-//as
 uint ChunkIndexToRayStep(uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable)
 {
 	return LimitingDim(chunkPositionTable[chunkIndex]);
@@ -1028,51 +1049,48 @@ uint LocalIndexToAdjustedIndex(uint localIndex, uint chunkIndex, RWStructuredBuf
 	return RayIndexToAdjustedIndex(LocalIndexToRayIndex(localIndex, chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), chunkIndex, chunkPositionTable);
 }
 
-
-//** These methods specific to ray height
-
-uint AdjustedIndexToArray(uint adjustedIndex)
+uint HeightAdjustedToArray(uint adjustedIndex)
 {
-	return round(floor(adjustedIndex / packedSize));
+	return round(floor(adjustedIndex / e_heightPackedSize));
 }
 
-uint AdjustedIndexToBit(uint adjustedIndex)
+uint HeightAdjustedToBit(uint adjustedIndex)
 {
-	return round((adjustedIndex % packedSize));
+	return round(adjustedIndex % e_heightPackedSize);
 }
 
-uint GetHeightValue(uint arrayIndex, uint bitIndex, RWStructuredBuffer<uint> globalHeightTable)
+uint SolidAdjustedToArray(uint adjustedIndex)
 {
-	return ((globalHeightTable[arrayIndex] >> bitIndex) & 0xF);
+	return round(floor(adjustedIndex / e_solidPackedSize));
 }
 
-uint GetHeightValue(uint arrayValue, uint bitIndex)
+uint SolidAdjustedToBit(uint adjustedIndex)
 {
-	return ((arrayValue >> bitIndex) & 0xF);
+	return round(adjustedIndex % e_solidPackedSize);
 }
 
-uint HeightComparisonSequence(uint localHeight, uint arrayValue, uint bitIndex)
+//This method under work
+//renmae to LocalVisCalcs
+void CalcChunkVisGlobalHeight(uint localIndex, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> solidTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable)
 {
-	return (arrayValue & ~(15U << 1 * heightBitSize)) | (localHeight << 1 * heightBitSize);
-}
-
-void GlobalHeightMin(uint arrayIndex, uint bitIndex, uint localIndex, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint3> chunkTable)
-{
-	InterlockedMin(globalHeightTable[arrayIndex], HeightComparisonSequence(chunkTable[localIndex].y, globalHeightTable[arrayIndex], bitIndex));
-}
-
-void CalcChunkVisGlobalHeight(uint localIndex, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable)
-{
-	if ((meshProperties[index].lowIndex & 0xFFF) != 0)
+	if ((meshProperties[localIndex].lowIndex & 0xFFF) != 0)
 	{
-		InterlockedMin(heightTransferBuffer[LocalIndexToLocalRay(localIndex, edgeTable)], chunkTable[index].y);
+		InterlockedMin(heightTransferBuffer[LocalIndexToLocalRay(localIndex, edgeTable)], chunkTable[localIndex].y);
+
+		InterlockedOr(solidTransferBuffer[LocalIndexToLocalRay(localIndex, edgeTable)], 1U);
 	}
 }
 
-void TransferToGlobalBuffer(uint index, uint chunkIndex RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> globalHeightTable RWStructuredBuffer<TriIndex> edgeTable)
+void LocalToGlobalTransfer(uint adjustedIndex, uint localRayIndex, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint> solidTransferBuffer)
 {
+	InterlockedOr(globalHeightTable[HeightAdjustedToArray(adjustedIndex)], heightTransferBuffer[localRayIndex] << HeightAdjustedToBit(adjustedIndex));
+	InterlockedOr(globalSolidBuffer[SolidAdjustedToBit])
+}
 
-	globalHeightTable[]
+//Transfer the locally calculated rays from the temp buffer to the global buffer
+void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable)
+{
+	HeightTransfer(LocalIndexToAdjustedIndex(LocalRayToBottom(localRayIndex, edgeTable), chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), localRayIndex, globalHeightTable, heightTransferBuffer);
 }
 
 //************************************************************************
@@ -1089,6 +1107,31 @@ void InitializeDummyChunks(uint3 id : SV_DispatchThreadID)
 	_DummyChunkOne[id.x] = 0;
 	_DummyChunkTwo[id.x] = 0;
 	_AltDummyChunk[id.x].lowIndex = 0;
+}
+
+[numthreads(1024, 1, 1)]
+void InitializeChunkVisibilityTable(uint3 id : SV_DispatchThreadID)
+{
+	_ChunkVisibilityTables[id.x] = 15;
+}
+
+[numthreads(1024, 1, 1)]
+void InitializeGlobalHeightTable(uint3 id: SV_DispatchThreadID)
+{
+	_GlobalHeightTable[id.x] = 0;
+}
+
+[numthreads(1024, 1, 1)]
+void InitializeGlobalSolidBuffer(uint3 id: SV_DispatchThreadID)
+{
+	GlobalSolidBuffer[id.x] = 0;
+}
+
+[numthreads(1024, 1, 1)]
+void InitializeLocalTransferBuffers(uint3 id: SV_DispatchThreadID)
+{
+	HeightTransferBuffer[id.x] = 15U;
+	SolidTransferBuffer[id.x] = 0;
 }
 
 [numthreads(1024, 1, 1)]
@@ -1141,18 +1184,6 @@ void InitializeRaysTwo(uint3 id : SV_DispatchThreadID)
 }
 
 [numthreads(1024, 1, 1)]
-void InitializeChunkVisibilityTable(uint3 id : SV_DispatchThreadID)
-{
-	_ChunkVisibilityTables[id.x] = 15;
-}
-
-[numthreads(1024, 1, 1)]
-void InitializeGlobalHeightTable(uint3 id: SV_DispatchThreadID)
-{
-	_GlobalHeightTable[id.x] = 4294967295U;
-}
-
-[numthreads(1024, 1, 1)]
 void Noise(uint3 id : SV_DispatchThreadID)
 {
 	//Ensure the Mesh table is wiped
@@ -1166,7 +1197,7 @@ void Noise(uint3 id : SV_DispatchThreadID)
 	}
 	else
 	{
-		_MeshProperties[id.x].lowIndex = 0;
+		_MeshProperties[id.x].lowIndex = 1;
 	}
 }
 
@@ -1213,27 +1244,21 @@ void ChunkVisibilityTable(uint3 id: SV_DispatchThreadID)
 {
 	calcChunkVis(_MeshProperties, _ChunkTable, _ChunkVisibilityTables, _EdgeTable, id.x);
 
-	calcChunkVisGlobalHeight(_MeshProperties, _ChunkTable, _GlobalHeightTable, _EdgeTable, _ChunkPositionTable, id.x, chunkIndex, _ChunkEdgeTable);
+	CalcChunkVisGlobalHeight(id.x, _MeshProperties, _ChunkTable, HeightTransferBuffer, _EdgeTable);
 }
 
 [numthreads(1024, 1, 1)]
-void ChunkVisibilityTableTwo(uint id: SV_DispatchThreadID)
+void ChunkVisibilityTableTwo(uint3 id: SV_DispatchThreadID)
 {
 	calcChunkVisTwo(_MeshProperties, _ChunkTable, _ChunkVisibilityTables, _EdgeTable, id.x);
 }
 
 [numthreads(1024, 1, 1)]
-void ChunkGlobalHeightVis(uint id: SV_DispatchThreadID)
-{
-	CalcChunkVisGlobalHeight(id.x, _MeshProperties, _ChunkTable, HeightTransferBuffer, _EdgeTable);
-}
-
-[numthreads(1024, 1, 1)]
-void TransferGlobalHeights(uint id: SV_DispatchThreadID)
+void TransferGlobalHeights(uint3 id: SV_DispatchThreadID)
 {
 	if (id.x < leadingEdgeCount)
 	{
-
+		TransferToGlobalBuffer(id.x, chunkIndex, _ChunkTable, HeightTransferBuffer, _GlobalHeightTable, _EdgeTable, _ChunkPositionTable, _ChunkEdgeTable);
 	}
 }
 
