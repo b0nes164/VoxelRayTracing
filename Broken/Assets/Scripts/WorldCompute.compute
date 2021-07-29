@@ -52,7 +52,7 @@ RWStructuredBuffer<uint> HeightTransferBuffer;
 RWStructuredBuffer<uint> SolidTransferBuffer;
 
 RWStructuredBuffer<uint> _GlobalHeightTable;
-RWStructuredBuffer<uint> _GlobalSolidTable;
+RWStructuredBuffer<uint> GlobalSolidBuffer;
 RWStructuredBuffer<uint> _GlobalShadowTable;
 
 RWStructuredBuffer<uint> _ChunkVisibility;
@@ -1071,12 +1071,11 @@ uint SolidAdjustedToBit(uint adjustedIndex)
 
 //This method under work
 //renmae to LocalVisCalcs
-void CalcChunkVisGlobalHeight(uint localIndex, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> solidTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable)
+void LocalVisCalcs(uint localIndex, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> solidTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable)
 {
 	if ((meshProperties[localIndex].lowIndex & 0xFFF) != 0)
 	{
 		InterlockedMin(heightTransferBuffer[LocalIndexToLocalRay(localIndex, edgeTable)], chunkTable[localIndex].y);
-
 		InterlockedOr(solidTransferBuffer[LocalIndexToLocalRay(localIndex, edgeTable)], 1U);
 	}
 }
@@ -1084,13 +1083,13 @@ void CalcChunkVisGlobalHeight(uint localIndex, RWStructuredBuffer<DualIndex> mes
 void LocalToGlobalTransfer(uint adjustedIndex, uint localRayIndex, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint> solidTransferBuffer)
 {
 	InterlockedOr(globalHeightTable[HeightAdjustedToArray(adjustedIndex)], heightTransferBuffer[localRayIndex] << HeightAdjustedToBit(adjustedIndex));
-	InterlockedOr(globalSolidBuffer[SolidAdjustedToBit])
+	InterlockedOr(globalSolidBuffer[SolidAdjustedToArray(adjustedIndex)], solidTransferBuffer[localRayIndex] << SolidAdjustedToBit(adjustedIndex));
 }
 
 //Transfer the locally calculated rays from the temp buffer to the global buffer
-void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable)
+void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint> solidTransferBuffer)
 {
-	HeightTransfer(LocalIndexToAdjustedIndex(LocalRayToBottom(localRayIndex, edgeTable), chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), localRayIndex, globalHeightTable, heightTransferBuffer);
+	LocalToGlobalTransfer(LocalIndexToAdjustedIndex(LocalRayToBottom(localRayIndex, edgeTable), chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), localRayIndex, globalHeightTable, heightTransferBuffer, globalSolidBuffer, solidTransferBuffer);
 }
 
 //************************************************************************
@@ -1244,7 +1243,7 @@ void ChunkVisibilityTable(uint3 id: SV_DispatchThreadID)
 {
 	calcChunkVis(_MeshProperties, _ChunkTable, _ChunkVisibilityTables, _EdgeTable, id.x);
 
-	CalcChunkVisGlobalHeight(id.x, _MeshProperties, _ChunkTable, HeightTransferBuffer, _EdgeTable);
+	LocalVisCalcs(id.x, _MeshProperties, _ChunkTable, HeightTransferBuffer, SolidTransferBuffer, _EdgeTable);
 }
 
 [numthreads(1024, 1, 1)]
@@ -1258,7 +1257,7 @@ void TransferGlobalHeights(uint3 id: SV_DispatchThreadID)
 {
 	if (id.x < leadingEdgeCount)
 	{
-		TransferToGlobalBuffer(id.x, chunkIndex, _ChunkTable, HeightTransferBuffer, _GlobalHeightTable, _EdgeTable, _ChunkPositionTable, _ChunkEdgeTable);
+		TransferToGlobalBuffer(id.x, chunkIndex, _ChunkTable, HeightTransferBuffer, _GlobalHeightTable, _EdgeTable, _ChunkPositionTable, _ChunkEdgeTable, GlobalSolidBuffer, SolidTransferBuffer);
 	}
 }
 
