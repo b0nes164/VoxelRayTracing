@@ -51,6 +51,8 @@ public class WorldGeneration
     private int[][] count = new int[chunkCount][];
     private MaterialPropertyBlock[] propertyBlocks = new MaterialPropertyBlock[chunkCount];
 
+    private ComputeBuffer bugBugger;
+
     private int[] xOffset = new int[chunkCount];
     private int[] yOffset = new int[chunkCount];
     private int[] zOffset = new int[chunkCount];
@@ -76,6 +78,7 @@ public class WorldGeneration
 
     private void InitializeShaderValues()
     {
+        bugBugger = new ComputeBuffer(leadingEdgeCount, sizeof(uint));
         computeShader.SetInt("stepIndex", step);
         computeShader.SetInt("cubeCount", cubeCount);
         computeShader.SetInt("xChunks", xChunks);
@@ -219,6 +222,16 @@ public class WorldGeneration
             computeShader.Dispatch(chunkVisTableKernelTwo, dispatchGroups, 1, 1);
 
             TransferGlobalHeights();
+
+            /*
+             test = new uint[solidTransferBuffer.count];
+            solidTransferBuffer.GetData(test);
+            foreach (uint g in test)
+            {
+                Debug.Log(Convert.ToString(g, 2));
+            }
+             */
+
             ResetLocalTransferBuffers();
 
             /*
@@ -226,10 +239,20 @@ public class WorldGeneration
             visibilityBuffers[index].GetData(test);
             foreach (uint g in test)
             {
-                Debug.Log(g & 0xF);
+                //g & 0xF
+                //g & 16U >> 4
+                Debug.Log((g & 16U) >> 4);
             }
              */
 
+            /*
+             test = new uint[bugBugger.count];
+            bugBugger.GetData(test);
+            foreach (uint g in test)
+            {
+                Debug.Log(g);
+            }
+             */
 
             int chunkGlobalVisKernel = computeShader.FindKernel("ChunkGlobalVis");
             computeShader.SetBuffer(chunkGlobalVisKernel, "_ChunkVisibilityTables", visibilityBuffers[index]);
@@ -356,8 +379,18 @@ public class WorldGeneration
              */
         }
 
-        test = new uint[globalHeightBuffer.count];
+        /*
+         test = new uint[globalHeightBuffer.count];
         globalHeightBuffer.GetData(test);
+        Debug.Log(test.Length);
+        for (int g = 0; g < test.Length; g++)
+        {
+            Debug.Log(Convert.ToString(test[g], 2));
+        }
+         */
+
+         test = new uint[globalSolidBuffer.count];
+        globalSolidBuffer.GetData(test);
         Debug.Log(test.Length);
         for (int g = 0; g < test.Length; g++)
         {
@@ -908,6 +941,7 @@ public class WorldGeneration
         heightTransferBuffer.Release();
         globalSolidBuffer.Release();
         solidTransferBuffer.Release();
+        bugBugger.Release();
 
         foreach (ComputeBuffer c in dummyBuffersOne)
         {
@@ -985,17 +1019,17 @@ public class WorldGeneration
         computeShader.Dispatch(initializeLocalTransferKernel, Mathf.CeilToInt(leadingEdgeCount / 1024f), 1, 1);
     }
 
-    private void InitKernTransferGlobalHeights()
-    {
-        transferGlobalHeightsKernel = computeShader.FindKernel("TransferGlobalHeights");
-    }
-
     private void InitKernGlobalSolids()
     {
         globalSolidBuffer = new ComputeBuffer(Mathf.CeilToInt(leadingEdgeCount * chunkStepDepth * 1f / SolidPackedSize()), sizeof(uint));
         initializeGlobalSolidsKernel = computeShader.FindKernel("InitializeGlobalSolidBuffer");
         computeShader.SetBuffer(initializeGlobalSolidsKernel, "GlobalSolidBuffer", globalSolidBuffer);
         computeShader.Dispatch(initializeGlobalSolidsKernel, Mathf.CeilToInt(leadingEdgeCount / 1024f), 1, 1);
+    }
+
+    private void InitKernTransferGlobalHeights()
+    {
+        transferGlobalHeightsKernel = computeShader.FindKernel("TransferGlobalHeights");
     }
 
     private void TransferGlobalHeights()

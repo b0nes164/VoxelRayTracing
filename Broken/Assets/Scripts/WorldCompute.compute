@@ -57,6 +57,7 @@ RWStructuredBuffer<uint> _GlobalShadowTable;
 
 RWStructuredBuffer<uint> _ChunkVisibility;
 
+RWStructuredBuffer<uint> BugBuffer;
 
 //These are just references for the cull method.
 StructuredBuffer<uint> _DiagonalTopChunk;
@@ -603,7 +604,7 @@ uint LocalRayToTop(uint localRayIndex, RWStructuredBuffer<TriIndex> edgeTable)
 //Creates the lookup table for the following conversions: localIndex to localRayIndex; localRayIndex to Top, Bottom 
 void rayCalc(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint> tempTable, uint index)
 {
-	if (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) != 0)
+	if (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) != 7)
 	{
 		uint tempIndex = index;
 
@@ -622,7 +623,7 @@ void rayCalc(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint> te
 //Creates the lookup table for the following conversion:
 void rayCalcTwo(RWStructuredBuffer<TriIndex>  edgeTable, RWStructuredBuffer<uint> tempTable, uint index)
 {
-	if (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) != 0)
+	if (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) != 7)
 	{
 		edgeTable[tempTable[index]].thirdIndex = edgeTable[(edgeTable[edgeTable[tempTable[index]].highIndex >> 13].lowIndex >> s_localEdgeNextIndex) & 0xFFF].lowIndex >> s_localEdgeRayIndex;
 	}
@@ -1066,11 +1067,10 @@ uint SolidAdjustedToArray(uint adjustedIndex)
 
 uint SolidAdjustedToBit(uint adjustedIndex)
 {
-	return round(adjustedIndex % e_solidPackedSize);
+	return fmod(adjustedIndex,  e_solidPackedSize);
 }
 
 //This method under work
-//renmae to LocalVisCalcs
 void LocalVisCalcs(uint localIndex, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> solidTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable)
 {
 	if ((meshProperties[localIndex].lowIndex & 0xFFF) != 0)
@@ -1080,10 +1080,10 @@ void LocalVisCalcs(uint localIndex, RWStructuredBuffer<DualIndex> meshProperties
 	}
 }
 
-void LocalToGlobalTransfer(uint adjustedIndex, uint localRayIndex, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint> solidTransferBuffer)
+ void LocalToGlobalTransfer(uint adjustedIndex, uint localRayIndex, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint> solidTransferBuffer)
 {
 	InterlockedOr(globalHeightTable[HeightAdjustedToArray(adjustedIndex)], heightTransferBuffer[localRayIndex] << HeightAdjustedToBit(adjustedIndex));
-	InterlockedOr(globalSolidBuffer[SolidAdjustedToArray(adjustedIndex)], solidTransferBuffer[localRayIndex] << SolidAdjustedToBit(adjustedIndex));
+	InterlockedXor(globalSolidBuffer[SolidAdjustedToArray(adjustedIndex)], solidTransferBuffer[localRayIndex] << SolidAdjustedToBit(adjustedIndex));
 }
 
 //Transfer the locally calculated rays from the temp buffer to the global buffer
@@ -1091,6 +1091,17 @@ void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuf
 {
 	LocalToGlobalTransfer(LocalIndexToAdjustedIndex(LocalRayToBottom(localRayIndex, edgeTable), chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), localRayIndex, globalHeightTable, heightTransferBuffer, globalSolidBuffer, solidTransferBuffer);
 }
+
+//Test overloads ignore
+void LocalToGlobalTransfer(uint adjustedIndex, uint localRayIndex, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint> solidTransferBuffer)
+{
+	InterlockedOr(globalSolidBuffer[SolidAdjustedToArray(adjustedIndex)], solidTransferBuffer[localRayIndex] << SolidAdjustedToBit(adjustedIndex));
+}
+void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint> solidTransferBuffer)
+{
+	LocalToGlobalTransfer(LocalIndexToAdjustedIndex(LocalRayToBottom(localRayIndex, edgeTable), chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), localRayIndex, globalSolidBuffer, solidTransferBuffer);
+}
+
 
 //************************************************************************
 
@@ -1255,10 +1266,7 @@ void ChunkVisibilityTableTwo(uint3 id: SV_DispatchThreadID)
 [numthreads(1024, 1, 1)]
 void TransferGlobalHeights(uint3 id: SV_DispatchThreadID)
 {
-	if (id.x < leadingEdgeCount)
-	{
-		TransferToGlobalBuffer(id.x, chunkIndex, _ChunkTable, HeightTransferBuffer, _GlobalHeightTable, _EdgeTable, _ChunkPositionTable, _ChunkEdgeTable, GlobalSolidBuffer, SolidTransferBuffer);
-	}
+	TransferToGlobalBuffer(id.x, chunkIndex, _ChunkTable, HeightTransferBuffer, _GlobalHeightTable, _EdgeTable, _ChunkPositionTable, _ChunkEdgeTable, GlobalSolidBuffer, SolidTransferBuffer);
 }
 
 [numthreads(1024, 1, 1)]
