@@ -92,9 +92,14 @@ extern uint globalWidth;
 extern uint globalStep;
 extern uint chunkStepDepth;
 
-//This will need to be changed for each table
+//8 by default
 extern uint e_heightPackedSize;
+//32 by default
 extern uint e_solidPackedSize;
+//15 by default
+extern uint e_heightComparison;
+//1 always
+extern uint e_solidComparison;
 
 extern bool topEdge;
 extern uint crossHeight;
@@ -778,6 +783,11 @@ void calcGlobalVis(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<ui
 	
 }
 
+void CalcGlobalShadow()
+{
+
+}
+
 //returns the local index of the corresponding next chunk in a ray
 uint LocalIndexToNext(uint localIndex, RWStructuredBuffer<TriIndex> edgeTable)
 {
@@ -952,7 +962,6 @@ uint GlobalIndexToRayStartingIndex(uint globalIndex, uint localIndex, uint chunk
 			return 0;
 		}
 }
-
 //use this method
 uint GlobalIndexToRayStartingIndex(uint globalIndex, uint chunkIndex, uint3 globalPos, RWStructuredBuffer<uint> chunkEdgeTable)
 {
@@ -992,7 +1001,6 @@ uint GlobalPosToRayStartingIndex(uint3 globalPos, uint chunkIndex, RWStructuredB
 {
 	return GlobalIndexToRayStartingIndex(GlobalPosToIndex(globalPos), chunkIndex, globalPos, chunkEdgeTable);
 }
-
 uint GlobalPosToRayStartingIndex(uint3 globalPos, uint localIndex, uint chunkIndex, RWStructuredBuffer<uint> chunkEdgeTable, RWStructuredBuffer<TriIndex> edgeTable)
 {
 	return GlobalIndexToRayStartingIndex(GlobalPosToIndex(globalPos), localIndex, chunkIndex, globalPos, chunkEdgeTable, edgeTable);
@@ -1050,24 +1058,14 @@ uint LocalIndexToAdjustedIndex(uint localIndex, uint chunkIndex, RWStructuredBuf
 	return RayIndexToAdjustedIndex(LocalIndexToRayIndex(localIndex, chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), chunkIndex, chunkPositionTable);
 }
 
-uint HeightAdjustedToArray(uint adjustedIndex)
+uint AdjustedToArray(uint adjustedIndex, uint packedSize)
 {
-	return round(floor(adjustedIndex / e_heightPackedSize));
+	return floor(adjustedIndex / packedSize);
 }
 
-uint HeightAdjustedToBit(uint adjustedIndex)
+uint AdjustedToBit(uint adjustedIndex, uint packedSize)
 {
-	return round(adjustedIndex % e_heightPackedSize);
-}
-
-uint SolidAdjustedToArray(uint adjustedIndex)
-{
-	return round(floor(adjustedIndex / e_solidPackedSize));
-}
-
-uint SolidAdjustedToBit(uint adjustedIndex)
-{
-	return fmod(adjustedIndex,  e_solidPackedSize);
+	return adjustedIndex % packedSize;
 }
 
 //This method under work
@@ -1082,8 +1080,8 @@ void LocalVisCalcs(uint localIndex, RWStructuredBuffer<DualIndex> meshProperties
 
  void LocalToGlobalTransfer(uint adjustedIndex, uint localRayIndex, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint> solidTransferBuffer)
 {
-	InterlockedOr(globalHeightTable[HeightAdjustedToArray(adjustedIndex)], heightTransferBuffer[localRayIndex] << HeightAdjustedToBit(adjustedIndex));
-	InterlockedXor(globalSolidBuffer[SolidAdjustedToArray(adjustedIndex)], solidTransferBuffer[localRayIndex] << SolidAdjustedToBit(adjustedIndex));
+	InterlockedOr(globalHeightTable[AdjustedToArray(adjustedIndex, e_heightPackedSize)], heightTransferBuffer[localRayIndex] << AdjustedToBit(adjustedIndex, e_heightPackedSize));
+	InterlockedXor(globalSolidBuffer[AdjustedToArray(adjustedIndex, e_solidPackedSize)], solidTransferBuffer[localRayIndex] << AdjustedToBit(adjustedIndex, e_solidPackedSize));
 }
 
 //Transfer the locally calculated rays from the temp buffer to the global buffer
@@ -1101,6 +1099,18 @@ void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuf
 {
 	LocalToGlobalTransfer(LocalIndexToAdjustedIndex(LocalRayToBottom(localRayIndex, edgeTable), chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), localRayIndex, globalSolidBuffer, solidTransferBuffer);
 }
+
+//returns the value of any global buffer
+uint GetGlobalValue(uint adjustedIndex, uint chunkIndex, uint packedSize, uint comparison, RWStructuredBuffer<uint> globalBuffer)
+{
+	return (globalBuffer[AdjustedToArray(adjustedIndex, packedSize)] >> AdjustedToBit(adjustedIndex, packedSize)) & comparison;
+}
+
+uint LocalRayToGlobalValue(uint localRayIndex, uint chunkIndex, uint packedSize, uint comparison, RWStructuredBuffer<uint> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable,  RWStructuredBuffer<uint> globalBuffer)
+{
+	return GetGlobalValueValue(LocalIndexToAdjustedIndex(LocalRayToBottom(localRayIndex, edgeTable), chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), chunkIndex, packedSize, comparison, globalBuffer);
+}
+
 
 
 //************************************************************************
@@ -1316,6 +1326,13 @@ void ChunkGlobalVisTwo(uint3 id : SV_DispatchThreadID)
 			break;
 		}
 	}
+}
+
+[numthreads(1024, 1, 1)]
+void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
+{
+	uint index = round(id.x % 1024);
+	uint chunkHeight = floor(id.x / 1024);
 }
 
 [numthreads(1024, 1, 1)]
