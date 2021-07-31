@@ -9,9 +9,9 @@ public class WorldGeneration
     private ComputeShader computeShader;
     private bool chunkInfo;
 
-    private static readonly int xChunks = 10;
-    private static readonly int yChunks = 5;
-    private static readonly int zChunks = 10;
+    private static readonly int xChunks = 1;
+    private static readonly int yChunks = 1;
+    private static readonly int zChunks = 1;
     private static int chunkCount = xChunks * yChunks * zChunks;
 
     private static int length = 16;
