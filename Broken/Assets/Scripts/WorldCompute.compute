@@ -17,9 +17,16 @@
 #pragma kernel TransferGlobalHeights
 #pragma kernel ChunkGlobalVis
 #pragma kernel ChunkGlobalVisTwo
+#pragma kernel GlobalShadowCalcs
 #pragma kernel StupidCull
 #pragma kernel StupidCull2
 #pragma kernel CoolCull
+
+struct KeyValue
+{
+	uint key;
+	uint value;
+};
 
 struct DualIndex
 {
@@ -101,6 +108,11 @@ extern uint e_heightComparison;
 //1 always
 extern uint e_solidComparison;
 
+//the y level of the current cross
+extern uint e_crossYChunk;
+// size of the hashBuffer
+extern uint e_hashBufferSize;
+
 extern bool topEdge;
 extern uint crossHeight;
 extern uint trueHeight;
@@ -109,10 +121,15 @@ extern uint chunkIndex;
 extern uint topOffset;
 extern uint sameLevelOffset;
 
+//hashbuffer sentinel empty value
+static uint s_empty = 0xffffffff;
+
 static uint s_shadowComparisons[16] = { 0, 32768U, 49152U, 57344U,
 										61440U, 63488U, 64512U, 65024U,
 										65280U, 65408U, 65472U, 65504U,
 										65520U, 65528U, 65532U, 65534U };
+
+static uint s_heightComparison = 15U;
 
 //**************************************************
 //Bit index values.
@@ -228,7 +245,7 @@ float snoise(float3 v)
 		dot(p2, x2), dot(p3, x3)));
 }
 
-float hash(float n)
+float rand(float n)
 {
 	return frac(sin(n)*43758.5453);
 }
@@ -243,11 +260,95 @@ float noise(float3 x)
 	f = f * f*(3.0 - 2.0*f);
 	float n = p.x + p.y*57.0 + 113.0*p.z;
 
-	return lerp(lerp(lerp(hash(n + 0.0), hash(n + 1.0), f.x),
-		lerp(hash(n + 57.0), hash(n + 58.0), f.x), f.y),
-		lerp(lerp(hash(n + 113.0), hash(n + 114.0), f.x),
-			lerp(hash(n + 170.0), hash(n + 171.0), f.x), f.y), f.z);
+	return lerp(lerp(lerp(rand(n + 0.0), rand(n + 1.0), f.x),
+		lerp(rand(n + 57.0), rand(n + 58.0), f.x), f.y),
+		lerp(lerp(rand(n + 113.0), rand(n + 114.0), f.x),
+			lerp(rand(n + 170.0), rand(n + 171.0), f.x), f.y), f.z);
 }
+//*************************************************************************************
+// Murmurhash3 32Bit Hash Function
+// Author: Austin Appleby
+// Lastmod: 1/8/2016
+// Liscence: MIT Liscence
+// Added 8/4/2021
+
+uint hash(uint k)
+{
+	k ^= k >> 16;
+	k *= 0x85ebca6b;
+	k ^= k >> 13;
+	k *= 0xc2b2ae35;
+	k ^= k >> 16;
+	return k & (e_hashBufferSize - 1);
+}
+
+//*************************************************************************************
+// Hash Table Functions
+// Author: David Farell, Translated to HLSL by me
+// Lastmod: 8/4/2021
+// Liscence: Unliscence
+// Added: 8/4/2021
+
+void HashInsert(RWStructuredBuffer<KeyValue> _hashBuffer, uint key, uint value)
+{
+	uint slot = hash(key);
+
+	uint prev;
+
+	while (true)
+	{
+		InterlockedCompareExchange(_hashBuffer[slot].key, s_empty, key, prev);
+
+		if (prev == s_empty || prev == key)
+		{
+			_hashBuffer[slot].value = value;
+			return;
+		}
+
+		slot = (slot + 1) & (e_hashBufferSize - 1);
+	}
+}
+
+uint HashLookup(RWStructuredBuffer<KeyValue> _hashBuffer, uint key)
+{
+	uint slot = hash(key);
+
+	while (true)
+	{
+		if (_hashBuffer[slot].key == key)
+		{
+			return _hashBuffer[slot].value;
+		}
+		if (_hashBuffer[slot].key == s_empty)
+		{
+			return s_empty;
+		}
+
+		slot = (slot + 1) & (e_hashBufferSize - 1);
+	}
+}
+
+void HashDelete(RWStructuredBuffer<KeyValue> _hashBuffer, uint key)
+{
+	uint slot = hash(key);
+
+	while (true)
+	{
+		if (_hashBuffer[slot].key == key)
+		{
+			_hashBuffer[slot].value = s_empty;
+			return;
+		}
+		if (_hashBuffer[slot].key == s_empty)
+		{
+			return;
+		}
+
+		slot = (slot + 1) & (e_hashBufferSize - 1);
+	}
+}
+//***************************************************************************************
+
 
 //returns if an index is on its leading edge
 bool IsOnLeadingEdge(uint value, uint dimension)
@@ -1100,7 +1201,8 @@ uint GetGlobalValue(uint adjustedIndex, uint packedSize, uint comparison, RWStru
 {
 	return (globalBuffer[AdjustedToArray(adjustedIndex, packedSize)] >> AdjustedToBit(adjustedIndex, packedSize)) & comparison;
 }
-uint GetGlobalValue(uint arrayIndex, uint comparison, uint step, uint blank, RWStructuredBuffer<uint> globalBuffer)
+//an overload but necessary to change name
+uint GetGlobalValueStep(uint arrayIndex, uint comparison, uint step, RWStructuredBuffer<uint> globalBuffer)
 {
 	return (globalBuffer[arrayIndex] >> step) & comparison;
 }
@@ -1109,6 +1211,8 @@ uint LocalRayToGlobalValue(uint localRayIndex, uint chunkIndex, uint packedSize,
 	return GetGlobalValue(LocalIndexToAdjustedIndex(LocalRayToBottom(localRayIndex, edgeTable), chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), packedSize, comparison, globalBuffer);
 }
 
+//*******************************************************************************************************************************************************************************************
+//Final Visibility methods
 //use for testing, can be replaced with s_shadowComparisons
 uint CreateShadowComparison(uint difference)
 {
@@ -1122,30 +1226,50 @@ uint CreateShadowComparison(uint difference)
 }
 
 //returns the difference between the y position of the current chunk and the maximum number of y chunks.
+//note adjustment to chunkStepDepth
 uint StepDifference(uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable)
 {
 	return (chunkStepDepth - 1) - chunkPositionTable[chunkIndex].y;
 }
 
 //global method to determine whether a chunk is in shadow
-bool IsInShadow(uint adjustedIndex, uint chunkIndex, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint3> chunkPositionTable)
+bool InShadow(uint adjustedIndex, uint chunkIndex, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint3> chunkPositionTable)
 {
 	return GetGlobalValue(adjustedIndex, e_solidPackedSize, CreateShadowComparison(StepDifference(chunkIndex, chunkPositionTable)), globalSolidBuffer) > 0;
 }
 
 //returns the greatest chunk less than or equal to the current chunkIndex position
-uint GreatestStep(uint arrayIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> globalSolidBuffer)
+uint GreatestStep(uint arrayIndex, uint currentYChunk, RWStructuredBuffer<uint> globalSolidBuffer)
 {
-	uint greatestStep = chunkStepDepth + 1;
-
-	for (int i = chunkPositionTable[chunkIndex].y; i > 0; i--)
+	for (int i = currentYChunk; i > 0; i--)
 	{
-		if (GetGlobalValue(arrayIndex, 1U, i, 0, globalSolidBuffer) == 1)
+		if (GetGlobalValueStep(arrayIndex, 1U, i, globalSolidBuffer) == 1)
 		{
 			return i;
 		}
 	}
+
+	//will only reach this point if the there are no solids at or below the chunk y level
+	return chunkStepDepth + 1;
 }
+
+// this will need to be changed to something more elegant
+/*
+bool GlobalVisCalc(uint crossYChunk, uint currentYChunk, uint localCrossHeight)
+{
+	if (currentYChunk > GreatestStep(arrayIndex, crossYChunk, globalSolidBuffer) )
+	{
+		return false;
+	}
+	//less than or equal to remaining
+	else
+	{
+		if(currentYChunk)
+	}
+
+}
+*/
+
 
 
 

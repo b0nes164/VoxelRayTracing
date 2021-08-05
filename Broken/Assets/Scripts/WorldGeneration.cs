@@ -1,6 +1,10 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using Unity.Burst;
+using Unity.Jobs;
+using Unity.Collections;
+using Unity.Mathematics;
 using System;
 
 public class WorldGeneration
@@ -51,7 +55,8 @@ public class WorldGeneration
     private int[][] count = new int[chunkCount][];
     private MaterialPropertyBlock[] propertyBlocks = new MaterialPropertyBlock[chunkCount];
 
-    private ComputeBuffer bugBugger;
+    private ComputeBuffer CalcBuffer;
+    private List<ChunkStruct> chunkList = new List<ChunkStruct>();
 
     private int[] xOffset = new int[chunkCount];
     private int[] yOffset = new int[chunkCount];
@@ -60,7 +65,10 @@ public class WorldGeneration
     private bool[] nullChecks = new bool[chunkCount];
     private bool[][] renderCalcCheck = new bool[chunkCount][];
 
+    private ComputeBuffer bugBugger;
     private uint[] test;
+
+    
 
     #region
     //kernels
@@ -178,6 +186,9 @@ public class WorldGeneration
             computeShader.SetBuffer(initializeDummyKernel, "_AltDummyChunk", altDummyBuffers[i]);
             computeShader.Dispatch(initializeDummyKernel, dispatchGroups, 1, 1);
         }
+
+        PopulateChunkList();
+        GlobalVisCalcs(chunkList);
     }
 
     public void GenerateWorld()
@@ -389,13 +400,16 @@ public class WorldGeneration
         }
          */
 
-         test = new uint[globalSolidBuffer.count];
+        /*
+          test = new uint[globalSolidBuffer.count];
         globalSolidBuffer.GetData(test);
         Debug.Log(test.Length);
         for (int g = 0; g < test.Length; g++)
         {
             Debug.Log(Convert.ToString(test[g], 2));
         }
+         */
+
     }
 
     public void GenerateMeshProperties()
@@ -1004,6 +1018,7 @@ public class WorldGeneration
         return 32;
     }
 
+    #region buffer methods
     private void InitKernLocalTransferBuffers()
     {
         heightTransferBuffer = new ComputeBuffer(leadingEdgeCount, sizeof(uint));
@@ -1043,5 +1058,111 @@ public class WorldGeneration
         computeShader.SetBuffer(transferGlobalHeightsKernel, "SolidTransferBuffer", solidTransferBuffer);
         computeShader.SetBuffer(transferGlobalHeightsKernel, "GlobalSolidBuffer", globalSolidBuffer);
         computeShader.Dispatch(transferGlobalHeightsKernel, Mathf.CeilToInt(leadingEdgeCount / 1024f), 1, 1);
+    }
+
+    #endregion
+
+    //use this method to push all chunk indexes into the chunking list until proper chunking system is developed
+    /*
+     private void populateChunkList(int currentYChunk)
+    {
+        for (int i = 0; i < xChunks * yChunks; i++)
+        {
+
+        }
+    }
+     */
+
+    private void PopulateChunkList()
+    {
+        for (int i = 0; i < chunkCount; i++)
+        {
+            chunkList.Add(new ChunkStruct(i, 0));
+        }
+    }
+
+    private void clearChunkList()
+    {
+        chunkList.Clear();
+    }
+
+
+    //takes the inputs from the chunking method
+    private void GlobalVisCalcs(List<ChunkStruct> _chunkList)
+    {
+        int lowIndex = _chunkList[0].Index;
+        int highIndex = _chunkList[_chunkList.Count - 1].Index;
+
+        foreach (ChunkStruct g in _chunkList)
+        {
+            if (chunkPositionTable[g.Index].x == chunkPositionTable[lowIndex].x)
+            {
+
+            }
+            else
+            {
+                if (chunkPositionTable[g.Index].y == chunkPositionTable[lowIndex].y)
+                {
+
+                }
+                else
+                {
+                    if (chunkPositionTable[g.Index].z == chunkPositionTable[lowIndex].z)
+                    {
+
+                    }
+                }
+            }
+        }
+    }
+
+    
+
+    //necessary to convert the the 2d chunking process to 3d
+    private int TwoDimIndexToThree(int twoDimHigh, int currentYChunk)
+    {
+        return (chunkPositionTable[twoDimHigh].x * yChunks * zChunks) + (currentYChunk * zChunks) + chunkPositionTable[twoDimHigh].z; 
+    }
+
+
+    [BurstCompile]
+    private struct IndexChunkJob : IJobParallelFor
+    {
+        [ReadOnly]
+        public int xValue;
+
+        [ReadOnly]
+        public int yValue;
+
+        [ReadOnly]
+
+        public NativeArray<int2> chunkListArray;
+
+        public void Execute(int index)
+        {
+        }
+    }
+
+    private struct ChunkStruct
+    {
+        private int _index;
+        private int _chunkCase;
+
+        public ChunkStruct(int index, int chunkCase)
+        {
+            _index = index;
+            _chunkCase = chunkCase;
+        }
+
+        public int Index 
+        {
+            get { return _index; }
+            set { _index = value; }
+        }
+        public int ChunkCase
+        {
+            get { return _chunkCase; }
+            set { _chunkCase = value; }
+        }
     }
 }
