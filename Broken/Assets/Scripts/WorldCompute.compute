@@ -4,6 +4,7 @@
 #pragma kernel InitializeGlobalHeightTable
 #pragma kernel InitializeGlobalSolidBuffer
 #pragma kernel InitializeLocalTransferBuffers
+#pragma kernel InitializeHashTransferBuffer
 #pragma kernel InitializeCubes
 #pragma kernel InitializeChunks
 #pragma kernel SingleThread
@@ -57,6 +58,7 @@ AppendStructuredBuffer<uint> _RenderProperties;
 
 RWStructuredBuffer<uint> HeightTransferBuffer;
 RWStructuredBuffer<uint> SolidTransferBuffer;
+RWStructuredBuffer<KeyValue> HashTransferBuffer;
 
 RWStructuredBuffer<uint> _GlobalHeightTable;
 RWStructuredBuffer<uint> GlobalSolidBuffer;
@@ -114,7 +116,7 @@ extern uint e_crossYChunk;
 extern uint e_hashBufferSize;
 
 extern bool topEdge;
-extern uint crossHeight;
+extern uint e_localCrossHeight;
 extern uint trueHeight;
 extern uint currentYChunk;
 extern uint chunkIndex;
@@ -334,13 +336,13 @@ void HashDelete(RWStructuredBuffer<KeyValue> _hashBuffer, uint key)
 
 	while (true)
 	{
+		if (_hashBuffer[slot].key == s_empty)
+		{
+			return;
+		}
 		if (_hashBuffer[slot].key == key)
 		{
 			_hashBuffer[slot].value = s_empty;
-			return;
-		}
-		if (_hashBuffer[slot].key == s_empty)
-		{
 			return;
 		}
 
@@ -740,95 +742,95 @@ void rayCalcTwo(RWStructuredBuffer<TriIndex>  edgeTable, RWStructuredBuffer<uint
 	}
 }
 
-uint visMethod(RWStructuredBuffer<int> counter, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, uint crossHeight)
+uint visMethod(RWStructuredBuffer<int> counter, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, uint localCrossHeight)
 {
 	if ((meshProperties[index].lowIndex & 0xFFF) != 0)
 	{
 		InterlockedAdd(counter[0], 1);
-		meshProperties[index].lowIndex |= 1U << 12 + crossHeight;
-		meshProperties[index].lowIndex |= 1U << 13 + crossHeight;
+		meshProperties[index].lowIndex |= 1U << 12 + localCrossHeight;
+		meshProperties[index].lowIndex |= 1U << 13 + localCrossHeight;
 		while (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) == 7)
 		{
 			index -= stepIndex;
-			meshProperties[index].lowIndex |= 1U << 13 + crossHeight;
+			meshProperties[index].lowIndex |= 1U << 13 + localCrossHeight;
 		}
 	}
 	return index;
 }
 
-void skipMethod(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, uint crossHeight)
+void skipMethod(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, uint localCrossHeight)
 {
-	meshProperties[index].lowIndex |= 1U << 13 + crossHeight;
+	meshProperties[index].lowIndex |= 1U << 13 + localCrossHeight;
 	while (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) == 7)
 	{
 		index -= stepIndex;
-		meshProperties[index].lowIndex |= 1U << 13 + crossHeight;
+		meshProperties[index].lowIndex |= 1U << 13 + localCrossHeight;
 	}
 }
 
 void calculateVisibility(RWStructuredBuffer<int> counter, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, bool visibilityCheck,
-	bool skip, uint crossHeight)
+	bool skip, uint localCrossHeight)
 {
 	if (visibilityCheck)
 	{
-		index = visMethod(counter, meshProperties, edgeTable, index, crossHeight);
+		index = visMethod(counter, meshProperties, edgeTable, index, localCrossHeight);
 		while (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) == 7)
 		{
 			index -= stepIndex;
-			index = visMethod(counter, meshProperties, edgeTable, index, crossHeight);
+			index = visMethod(counter, meshProperties, edgeTable, index, localCrossHeight);
 		}
 	}
 	else
 	{
 		if (skip)
 		{
-			skipMethod(meshProperties, edgeTable, index, crossHeight);
+			skipMethod(meshProperties, edgeTable, index, localCrossHeight);
 		}
 	}
 }
 
-uint visMethodHighIndex(RWStructuredBuffer<int> counter, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, uint crossHeight)
+uint visMethodHighIndex(RWStructuredBuffer<int> counter, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, uint localCrossHeight)
 {
 	if ((meshProperties[index].lowIndex & 0xFFF) != 0)
 	{
 		InterlockedAdd(counter[0], 1);
-		meshProperties[index].highIndex |= 1U << crossHeight;
-		meshProperties[index].highIndex |= 1U << 1 + crossHeight;
+		meshProperties[index].highIndex |= 1U << localCrossHeight;
+		meshProperties[index].highIndex |= 1U << 1 + localCrossHeight;
 		while (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) == 7)
 		{
 			index -= stepIndex;
-			meshProperties[index].highIndex |= 1U << 1 + crossHeight;
+			meshProperties[index].highIndex |= 1U << 1 + localCrossHeight;
 		}
 	}
 	return index;
 }
 
-void skipMethodHighIndex(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, uint crossHeight)
+void skipMethodHighIndex(RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, uint localCrossHeight)
 {
-	meshProperties[index].highIndex |= 1U << 1 + crossHeight;
+	meshProperties[index].highIndex |= 1U << 1 + localCrossHeight;
 	while (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) == 7)
 	{
 		index -= stepIndex;
-		meshProperties[index].highIndex |= 1U << 1 + crossHeight;
+		meshProperties[index].highIndex |= 1U << 1 + localCrossHeight;
 	}
 }
 void calculateVisibilityHighIndex(RWStructuredBuffer<int> counter, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<TriIndex> edgeTable, uint index, bool visibilityCheck,
-	bool skip, uint crossHeight)
+	bool skip, uint localCrossHeight)
 {
 	if (visibilityCheck)
 	{
-		index = visMethodHighIndex(counter, meshProperties, edgeTable, index, crossHeight);
+		index = visMethodHighIndex(counter, meshProperties, edgeTable, index, localCrossHeight);
 		while (((edgeTable[index].lowIndex >> s_localEdgeTrailingFace) & 0x7) == 7)
 		{
 			index -= stepIndex;
-			index = visMethodHighIndex(counter, meshProperties, edgeTable, index, crossHeight);
+			index = visMethodHighIndex(counter, meshProperties, edgeTable, index, localCrossHeight);
 		}
 	}
 	else
 	{
 		if (skip)
 		{
-			skipMethodHighIndex(meshProperties, edgeTable, index, crossHeight);
+			skipMethodHighIndex(meshProperties, edgeTable, index, localCrossHeight);
 		}
 	}
 }
@@ -1141,18 +1143,25 @@ uint LocalIndexToRayIndex(uint localIndex, uint chunkIndex, RWStructuredBuffer<u
 	return RayStartingIndexToRay(GlobalPosToRayStartingIndex(LocalPosToGlobal(LocalIndexToPos(localIndex, chunkTable), chunkPositionTable, chunkIndex), chunkIndex, chunkEdgeTable));
 }
 
+uint LocalRayToGlobalRay(uint localRayIndex, uint chunkIndex, RWStructuredBuffer<uint3> _chunkTable, RWStructuredBuffer<uint3> _chunkPositionTable, RWStructuredBuffer<uint> _chunkEdgeTable, RWStructuredBuffer<TriIndex> _edgeTable)
+{
+	return LocalIndexToRayIndex(LocalRayToBottom(localRayIndex, _edgeTable), chunkIndex, _chunkTable, _chunkPositionTable, _chunkEdgeTable);
+}
+
 //****************************************************************************************************************************************************************************************
 //This section contains the methods used to pack the height values into buffer to save on memory
 
-uint RayIndexToAdjustedIndex(uint rayIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable)
+uint GlobalRayToAdjusted(uint rayIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable)
 {
 	return (rayIndex * chunkStepDepth) + chunkPositionTable[chunkIndex].y;
 }
 
 uint LocalIndexToAdjustedIndex(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable)
 {
-	return RayIndexToAdjustedIndex(LocalIndexToRayIndex(localIndex, chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), chunkIndex, chunkPositionTable);
+	return GlobalRayToAdjusted(LocalIndexToRayIndex(localIndex, chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), chunkIndex, chunkPositionTable);
 }
+
+
 
 uint AdjustedToArray(uint adjustedIndex, uint packedSize)
 {
@@ -1164,7 +1173,6 @@ uint AdjustedToBit(uint adjustedIndex, uint packedSize)
 	return adjustedIndex % packedSize;
 }
 
-//This method under work
 void LocalVisCalcs(uint localIndex, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> solidTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable)
 {
 	if ((meshProperties[localIndex].lowIndex & 0xFFF) != 0)
@@ -1201,14 +1209,11 @@ uint GetGlobalValue(uint adjustedIndex, uint packedSize, uint comparison, RWStru
 {
 	return (globalBuffer[AdjustedToArray(adjustedIndex, packedSize)] >> AdjustedToBit(adjustedIndex, packedSize)) & comparison;
 }
-//an overload but necessary to change name
-uint GetGlobalValueStep(uint arrayIndex, uint comparison, uint step, RWStructuredBuffer<uint> globalBuffer)
+
+//only works for the solid buffer
+uint GetGlobalValueStep(uint solidArrayIndex, uint comparison, uint step, RWStructuredBuffer<uint> globalBuffer)
 {
-	return (globalBuffer[arrayIndex] >> step) & comparison;
-}
-uint LocalRayToGlobalValue(uint localRayIndex, uint chunkIndex, uint packedSize, uint comparison, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable,  RWStructuredBuffer<uint> globalBuffer, RWStructuredBuffer<TriIndex> edgeTable)
-{
-	return GetGlobalValue(LocalIndexToAdjustedIndex(LocalRayToBottom(localRayIndex, edgeTable), chunkIndex, chunkTable, chunkPositionTable, chunkEdgeTable), packedSize, comparison, globalBuffer);
+	return (globalBuffer[solidArrayIndex] >> step) & comparison;
 }
 
 //*******************************************************************************************************************************************************************************************
@@ -1253,26 +1258,26 @@ uint GreatestStep(uint arrayIndex, uint currentYChunk, RWStructuredBuffer<uint> 
 	return chunkStepDepth + 1;
 }
 
-// this will need to be changed to something more elegant
-/*
-bool GlobalVisCalc(uint crossYChunk, uint currentYChunk, uint localCrossHeight)
+
+//Return which chunk in the ray progression is visible, only one chunk can be visible at a time
+void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint localCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
 {
-	if (currentYChunk > GreatestStep(arrayIndex, crossYChunk, globalSolidBuffer) )
+	if (localCrossHeight < GetGlobalValue(adjustedIndex, e_heightPackedSize, s_heightComparison, globalHeightTable))
 	{
-		return false;
+		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(AdjustedToArray(adjustedIndex, e_solidPackedSize), crossYChunk - 1, globalSolidBuffer));
 	}
-	//less than or equal to remaining
 	else
 	{
-		if(currentYChunk)
+		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(AdjustedToArray(adjustedIndex, e_solidPackedSize), crossYChunk, globalSolidBuffer));
 	}
-
 }
-*/
 
 
-
-
+//Retrieve the visibility value from the hashBuffer
+bool GetVis(uint chunkIndex, uint globalRayIndex, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<KeyValue> hashTransferBuffer)
+{
+	return (chunkPositionTable[chunkIndex].y == HashLookup(hashTransferBuffer, globalRayIndex));
+}
 //************************************************************************
 
 [numthreads(1, 1, 1)]
@@ -1312,6 +1317,16 @@ void InitializeLocalTransferBuffers(uint3 id: SV_DispatchThreadID)
 {
 	HeightTransferBuffer[id.x] = 15U;
 	SolidTransferBuffer[id.x] = 0;
+}
+
+[numthreads(1024, 1, 1)]
+void InitializeHashTransferBuffer(uint3 id: SV_DispatchThreadID)
+{
+	if (id.x < e_hashBufferSize)
+	{
+		HashTransferBuffer[id.x].key = 0xffffffff;
+		HashTransferBuffer[id.x].value = 0xffffffff;
+	}
 }
 
 [numthreads(1024, 1, 1)]
@@ -1433,11 +1448,43 @@ void ChunkVisibilityTableTwo(uint3 id: SV_DispatchThreadID)
 	calcChunkVisTwo(_MeshProperties, _ChunkTable, _ChunkVisibilityTables, _EdgeTable, id.x);
 }
 
+//transfer the results of the local vis calcs to the global buffers
 [numthreads(1024, 1, 1)]
 void TransferGlobalHeights(uint3 id: SV_DispatchThreadID)
 {
 	TransferToGlobalBuffer(id.x, chunkIndex, _ChunkTable, HeightTransferBuffer, _GlobalHeightTable, _EdgeTable, _ChunkPositionTable, _ChunkEdgeTable, GlobalSolidBuffer, SolidTransferBuffer);
 }
+
+//the smallest number of threads equaual or greater than the outer shell
+//finds the chunk of equal to or less than the current localCrossHeight
+[numthreads(768, 1, 1)]
+void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
+{
+	if(id.x < leadingEdgeCount)
+	{
+		uint globalRay = LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable);
+		GlobalVisCalc(globalRay, GlobalRayToAdjusted(globalRay, chunkIndex, _ChunkPositionTable), e_crossYChunk, e_localCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
+	}
+}
+
+[numthreads(768, 1, 1)]
+void FinalCull(uint3 id : SV_DispatchThreadID)
+{
+	if(id.x < leadingEdgeCount)
+	{
+		if (GetVis(chunkIndex, LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable), _ChunkPositionTable, HashTransferBuffer))
+		{
+			
+		}
+		
+
+	}
+}
+
+
+
+
+
 
 [numthreads(1024, 1, 1)]
 void ChunkGlobalVis(uint3 id : SV_DispatchThreadID)
@@ -1488,12 +1535,6 @@ void ChunkGlobalVisTwo(uint3 id : SV_DispatchThreadID)
 	}
 }
 
-[numthreads(1024, 1, 1)]
-void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
-{
-	uint index = round(id.x % 1024);
-	uint chunkHeight = floor(id.x / 1024);
-}
 
 [numthreads(1024, 1, 1)]
 void StupidCull(uint3 id: SV_DispatchThreadID)
@@ -1525,69 +1566,6 @@ void StupidCull(uint3 id: SV_DispatchThreadID)
 	}
 	
 	calculateVisibilityHighIndex(_Counter, _MeshProperties, _EdgeTable, id.x, visibilityCheck, skip, 14);
-
-	/*
-	switch (_EdgeTable[id.x].lowIndex & 0x7)
-	{
-	case 0:
-		if (((_ChunkVisibilityTables[_EdgeTable[id.x].lowIndex >> 17] >> bitIndex) & 1U) == 1 && ((((_DiagonalTopChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> bitIndex) & 1U) == 0)))
-		{
-			visibilityCheck = true;
-		}
-		break;
-	case 1:
-		if (((_ChunkVisibilityTables[_EdgeTable[id.x].lowIndex >> 17] >> bitIndex) & 1U) == 1 && (((_TopLeftChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> bitIndex) & 1U) == 0))
-		{
-
-
-			visibilityCheck = true;
-		}
-		break;
-	case 4:
-		if (((_ChunkVisibilityTables[_EdgeTable[id.x].lowIndex >> 17] >> bitIndex) & 1U) == 1 && (((_TopRightChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> bitIndex) & 1U) == 0))
-		{
-
-
-			visibilityCheck = true;
-		}
-		break;
-	case 5:
-		if (((_ChunkVisibilityTables[_EdgeTable[id.x].lowIndex >> 17] >> bitIndex) & 1U) == 1 && (((_MiddleTopChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> bitIndex) & 1U) == 0))
-		{
-
-			visibilityCheck = true;
-		}
-		break;
-	default:
-		skip = 0;
-		break;
-	}
-	*/
-
-	/*
-	if (((_DiagonalTopChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> bitIndex) & 1U) == 1)
-		{
-			if (((_DiagonalTopChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] >> 4) & 1U) == 0)
-			{
-				visibilityCheck = false;
-			}
-			else
-			{
-				if (trueHeight < (_DiagonalTopChunk[_EdgeTable[(_EdgeTable[id.x].lowIndex >> 5) & 0xFFF].lowIndex >> 17] & 0xF) + yOffset)
-				{
-					visibilityCheck = true;
-				}
-				else
-				{
-					visibilityCheck = false;
-				}
-			}
-		}
-		else
-		{
-			visibilityCheck = true;
-		}
-	*/
 }
 
 //this is retarded but necessary because of buffer limit
@@ -1623,9 +1601,9 @@ void CoolCull(uint3 id : SV_DispatchThreadID)
 	_MeshProperties[id.x].lowIndex &= 0xFFF;
 	_MeshProperties[id.x].highIndex = 0;
 
-	if (_ChunkTable[id.x].y <= crossHeight)
+	if (_ChunkTable[id.x].y <= e_localCrossHeight)
 	{
-		if (_ChunkTable[id.x].y == crossHeight || ((_EdgeTable[id.x].lowIndex >> s_localEdgeLeadingSides) & 1U) == 1)
+		if (_ChunkTable[id.x].y == e_localCrossHeight || ((_EdgeTable[id.x].lowIndex >> s_localEdgeLeadingSides) & 1U) == 1)
 		{
 			bool visibilityCheck = false;
 			bool skip = 1;

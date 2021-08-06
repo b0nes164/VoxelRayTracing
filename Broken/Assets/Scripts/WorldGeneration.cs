@@ -33,6 +33,10 @@ public class WorldGeneration
     private static int globalStep = (globalWidth * globalHeight) + globalWidth + 1;
     private static int chunkStepDepth = Mathf.Min(Mathf.Min(xChunks, yChunks), zChunks);
 
+    private static int chunkSizeX = xChunks;
+    private static int chunkSizeY = yChunks;
+    private static int chunkSizeZ = zChunks;
+
     private ComputeBuffer chunkEdgeBuffer;
     private ComputeBuffer chunkPositionBuffer;
     private uint[] chunkEdgeTable = new uint[chunkCount];
@@ -48,12 +52,15 @@ public class WorldGeneration
     private ComputeBuffer heightTransferBuffer;
     private ComputeBuffer globalSolidBuffer;
     private ComputeBuffer solidTransferBuffer;
+    private ComputeBuffer hashTransferBuffer;
+
     private ComputeBuffer[] mainBuffers = new ComputeBuffer[chunkCount];
     private ComputeBuffer[] renderBuffers = new ComputeBuffer[chunkCount];
     private ComputeBuffer[] visibilityBuffers = new ComputeBuffer[chunkCount];
     private ComputeBuffer countBuffer;
     private int[][] count = new int[chunkCount][];
     private MaterialPropertyBlock[] propertyBlocks = new MaterialPropertyBlock[chunkCount];
+
 
     private ComputeBuffer CalcBuffer;
     private List<ChunkStruct> chunkList = new List<ChunkStruct>();
@@ -70,11 +77,19 @@ public class WorldGeneration
 
     
 
-    #region
-    //kernels
+    #region kernel
     private int initializeGlobalSolidsKernel;
     private int initializeLocalTransferKernel;
     private int transferGlobalHeightsKernel;
+
+    private int lowKern;
+    private int botLeftkern;
+    private int botRightKern;
+    private int centBotKern;
+    private int diagMidKern;
+    private int midLeftKern;
+    private int midRightKern;
+
     #endregion
     public WorldGeneration(bool _render, bool _chunkInfo, ComputeShader _computeShader)
     {
@@ -188,7 +203,7 @@ public class WorldGeneration
         }
 
         PopulateChunkList();
-        GlobalVisCalcs(chunkList);
+        SortChunkList(chunkList);
     }
 
     public void GenerateWorld()
@@ -232,7 +247,7 @@ public class WorldGeneration
             computeShader.SetBuffer(chunkVisTableKernelTwo, "_EdgeTable", edgeBuffer);
             computeShader.Dispatch(chunkVisTableKernelTwo, dispatchGroups, 1, 1);
 
-            TransferGlobalHeights();
+            DispatchTransferGlobalHeights();
 
             /*
              test = new uint[solidTransferBuffer.count];
@@ -420,7 +435,7 @@ public class WorldGeneration
             {
                 int index = i - 1;
 
-                computeShader.SetInt("crossHeight", height);
+                computeShader.SetInt("e_localCrossHeight", height);
 
                 int zeroCountBufferKernel = computeShader.FindKernel("ZeroCounter");
                 countBuffer = new ComputeBuffer(1, sizeof(int));
@@ -552,7 +567,7 @@ public class WorldGeneration
             computeShader.SetBool("topEdge", false);
             for (int i = 0; i < chunkCount; i++)
             {
-                computeShader.SetInt("crossHeight", 1);
+                computeShader.SetInt("e_localCrossHeight", 1);
 
                 int zeroCountBufferKernel = computeShader.FindKernel("ZeroCounter");
                 countBuffer = new ComputeBuffer(1, sizeof(int));
@@ -573,7 +588,6 @@ public class WorldGeneration
 
         Debug.Log(Time.realtimeSinceStartup);
     }
-
     private void GenerateRenderProperties(int index)
     {
         if (count[index][0] != 0)
@@ -636,7 +650,7 @@ public class WorldGeneration
 
     private void HeightDispatch(int chunkCross, int cross, int index, bool topEdge)
     {
-        computeShader.SetInt("crossHeight", chunkCross);
+        computeShader.SetInt("e_localCrossHeight", chunkCross);
         int zeroCountBufferKernel = computeShader.FindKernel("ZeroCounter");
         countBuffer = new ComputeBuffer(1, sizeof(int));
         computeShader.SetBuffer(zeroCountBufferKernel, "_Counter", countBuffer);
@@ -1047,7 +1061,28 @@ public class WorldGeneration
         transferGlobalHeightsKernel = computeShader.FindKernel("TransferGlobalHeights");
     }
 
-    private void TransferGlobalHeights()
+    private void InitKernChunkList()
+    {
+        lowKern = computeShader.FindKernel("LowVis");
+        botLeftkern = computeShader.FindKernel("BottomLeftVis");
+        botRightKern = computeShader.FindKernel("BottomRightVis");
+        centBotKern = computeShader.FindKernel("CenterBottomVis");
+        diagMidKern = computeShader.FindKernel("DiagonalMiddleVis");
+        midLeftKern = computeShader.FindKernel("MiddleLeftVis");
+        midRightKern = computeShader.FindKernel("MiddleRightVis");
+    }
+
+    private void InitHashTransferBuffer()
+    {
+        int x = chunkSizeX * length;
+        int y = chunkSizeY * height;
+        int z = chunkSizeZ * width;
+        int size = (x * z) + (x * (y - 1)) + ((z - 1) * (y - 1));
+        hashTransferBuffer = new ComputeBuffer((int)Mathf.Pow(2, HeightToBits(size)), sizeof(uint));
+        computeShader.SetInt("e_hashBufferSize", hashTransferBuffer.count);
+    }
+
+    private void DispatchTransferGlobalHeights()
     {
         computeShader.SetBuffer(transferGlobalHeightsKernel, "_ChunkTable", cubeBuffer);
         computeShader.SetBuffer(transferGlobalHeightsKernel, "HeightTransferBuffer", heightTransferBuffer);
@@ -1088,35 +1123,87 @@ public class WorldGeneration
 
 
     //takes the inputs from the chunking method
-    private void GlobalVisCalcs(List<ChunkStruct> _chunkList)
+    private void SortChunkList(List<ChunkStruct> _chunkList)
     {
         int lowIndex = _chunkList[0].Index;
         int highIndex = _chunkList[_chunkList.Count - 1].Index;
 
-        foreach (ChunkStruct g in _chunkList)
+        for (int i = 0; i < _chunkList.Count; i++)
         {
-            if (chunkPositionTable[g.Index].x == chunkPositionTable[lowIndex].x)
+            if (chunkPositionTable[_chunkList[i].Index].y == chunkPositionTable[lowIndex].y)
             {
-
-            }
-            else
-            {
-                if (chunkPositionTable[g.Index].y == chunkPositionTable[lowIndex].y)
+                if (chunkPositionTable[_chunkList[i].Index].z == chunkPositionTable[lowIndex].z)
                 {
-
+                    if (chunkPositionTable[_chunkList[i].Index].x == chunkPositionTable[lowIndex].x)
+                    {
+                        //This is the lowest index
+                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 0);
+                    }
+                    else
+                    {
+                        //bottom left
+                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 1);
+                    }
                 }
                 else
                 {
-                    if (chunkPositionTable[g.Index].z == chunkPositionTable[lowIndex].z)
+                    if (chunkPositionTable[_chunkList[i].Index].x == chunkPositionTable[lowIndex].x)
                     {
-
+                        //bottom right
+                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 2);
+                    }
+                    else
+                    {
+                        //center bottom
+                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 3);
+                    }
+                }
+            }
+            else
+            {
+                if (chunkPositionTable[_chunkList[i].Index].z == chunkPositionTable[lowIndex].z)
+                {
+                    if (chunkPositionTable[_chunkList[i].Index].x == chunkPositionTable[lowIndex].x)
+                    {
+                        //diagonal middle
+                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 4);
+                    }
+                    else
+                    {
+                        //middle left
+                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 5);
+                    }
+                }
+                else
+                {
+                    if (chunkPositionTable[_chunkList[i].Index].x == chunkPositionTable[lowIndex].x)
+                    {
+                        //middle right
+                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 6);
+                    }
+                    else
+                    {
+                        //not on the trailing face
+                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 7);
                     }
                 }
             }
         }
+
+        
     }
 
-    
+    private void CallVisCalc(ChunkStruct chunk)
+    {
+        switch (chunk.ChunkCase)
+        {
+            case 0:
+                //BottomLeftDispatch();
+                break;
+        }
+    }
+
+
 
     //necessary to convert the the 2d chunking process to 3d
     private int TwoDimIndexToThree(int twoDimHigh, int currentYChunk)
