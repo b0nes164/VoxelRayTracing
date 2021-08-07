@@ -16,12 +16,20 @@
 #pragma kernel ChunkVisibilityTable
 #pragma kernel ChunkVisibilityTableTwo
 #pragma kernel TransferGlobalHeights
+#pragma kernel GlobalShadowCalcs
+#pragma kernel FinalCull
 #pragma kernel ChunkGlobalVis
 #pragma kernel ChunkGlobalVisTwo
-#pragma kernel GlobalShadowCalcs
 #pragma kernel StupidCull
 #pragma kernel StupidCull2
 #pragma kernel CoolCull
+#pragma kernel LowVis
+#pragma kernel BottomLeftVis
+#pragma kernel BottomRightVis
+#pragma kernel CenterBottomVis
+#pragma kernel DiagonalMiddleVis
+#pragma kernel MiddleLeftVis
+#pragma kernel MiddleRightVis
 
 struct KeyValue
 {
@@ -1272,12 +1280,12 @@ void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, ui
 	}
 }
 
-
 //Retrieve the visibility value from the hashBuffer
 bool GetVis(uint chunkIndex, uint globalRayIndex, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<KeyValue> hashTransferBuffer)
 {
 	return (chunkPositionTable[chunkIndex].y == HashLookup(hashTransferBuffer, globalRayIndex));
 }
+
 //************************************************************************
 
 [numthreads(1, 1, 1)]
@@ -1474,10 +1482,8 @@ void FinalCull(uint3 id : SV_DispatchThreadID)
 	{
 		if (GetVis(chunkIndex, LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable), _ChunkPositionTable, HashTransferBuffer))
 		{
-			
+			calculateVisibilityHighIndex(_Counter, _MeshProperties, _EdgeTable, id.x, true, true, 14);
 		}
-		
-
 	}
 }
 
@@ -1677,6 +1683,47 @@ void CoolCull(uint3 id : SV_DispatchThreadID)
 	}
 }
 
+[numthreads(768, 1, 1)]
+void LowVis(uint3 id : SV_DispatchThreadID)
+{
+	
+}
+
+[numthreads(768, 1, 1)]
+void BottomLeftVis(uint3 id : SV_DispatchThreadID)
+{
+	
+}
+
+[numthreads(768, 1, 1)]
+void BottomRightVis(uint3 id : SV_DispatchThreadID)
+{
+	
+}
+
+[numthreads(768, 1, 1)]
+void CenterBottomVis(uint3 id : SV_DispatchThreadID)
+{
+	
+}
+
+[numthreads(768, 1, 1)]
+void DiagonalMiddleVis(uint3 id : SV_DispatchThreadID)
+{
+	
+}
+
+[numthreads(768, 1, 1)]
+void MiddleLeftVis(uint3 id : SV_DispatchThreadID)
+{
+	
+}
+
+[numthreads(768, 1, 1)]
+void MiddleRightVis(uint3 id : SV_DispatchThreadID)
+{
+	
+}
 
 	
 
