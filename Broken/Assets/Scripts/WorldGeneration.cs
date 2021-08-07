@@ -898,7 +898,7 @@ public class WorldGeneration
         computeShader.SetBuffer(finalCullKern, "HashTransferBuffer", hashTransferBuffer);
         computeShader.SetBuffer(finalCullKern, "_Counter", countBuffer);
         computeShader.SetBuffer(finalCullKern, "_MeshProperties", mainBuffers[index]);
-        computeShader.Dispatch(finalCullKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+        //computeShader.Dispatch(finalCullKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
 
         countBuffer.GetData(count[index]);
         countBuffer.Release();
@@ -976,6 +976,7 @@ public class WorldGeneration
         globalSolidBuffer.Release();
         solidTransferBuffer.Release();
         bugBugger.Release();
+        hashTransferBuffer.Release();
 
         foreach (ComputeBuffer c in dummyBuffersOne)
         {
@@ -1089,11 +1090,19 @@ public class WorldGeneration
         int y = chunkSizeY * height;
         int z = chunkSizeZ * width;
         int size = (x * z) + (x * (y - 1)) + ((z - 1) * (y - 1));
-        hashTransferBuffer = new ComputeBuffer((int)Mathf.Pow(2, HeightToBits(size)), sizeof(uint));
+        hashTransferBuffer = new ComputeBuffer((int)Mathf.Pow(2, HeightToBits(size)), sizeof(uint) * 2);
         computeShader.SetInt("e_hashBufferSize", hashTransferBuffer.count);
 
         computeShader.SetBuffer(initHashKern, "HashTransferBuffer", hashTransferBuffer);
         computeShader.Dispatch(initHashKern, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
+
+        test = new uint[hashTransferBuffer.count * 2];
+        hashTransferBuffer.GetData(test);
+
+        foreach (uint g in test)
+        {
+            Debug.Log(g);
+        }
     }
 
     private void DispatchTransferGlobalHeights()

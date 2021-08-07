@@ -66,7 +66,8 @@ public class RenderingManager : MonoBehaviour
         }
         else
         {
-            worldGen.HeightRendering(cross);
+            //worldGen.HeightRendering(cross);
+            worldGen.GlobalRendering(cross);
         }
 
         propertyBlocks = worldGen.GetPropertyBlocks();
@@ -95,14 +96,16 @@ public class RenderingManager : MonoBehaviour
         {
             cross = Mathf.Clamp(cross -= 1, 1, 32);
             worldGen.ReleaseRenderBuffers();
-            worldGen.HeightRendering(cross);
+            //worldGen.HeightRendering(cross);
+            worldGen.GlobalRendering(cross);
         }
 
         if (Input.GetKeyDown(KeyCode.PageUp))
         {
             cross = Mathf.Clamp(cross += 1, 1, 32);
             worldGen.ReleaseRenderBuffers();
-            worldGen.HeightRendering(cross);
+            //worldGen.HeightRendering(cross);
+            worldGen.GlobalRendering(cross);
         }
 
         for (int i = 0; i < renderBuffers.Length; i++)

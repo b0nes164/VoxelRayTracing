@@ -301,61 +301,60 @@ uint hash(uint k)
 
 void HashInsert(RWStructuredBuffer<KeyValue> _hashBuffer, uint key, uint value)
 {
-	uint slot = hash(key);
+    uint slot = hash(key);
 
-	uint prev;
+    while (true)
+    {
+        uint prev;
 
-	while (true)
-	{
-		InterlockedCompareExchange(_hashBuffer[slot].key, s_empty, key, prev);
+        InterlockedCompareExchange(_hashBuffer[slot].key, s_empty, key, prev);
 
-		if (prev == s_empty || prev == key)
-		{
-			_hashBuffer[slot].value = value;
-			return;
-		}
+        if (prev == s_empty || prev == key)
+        {
+            _hashBuffer[slot].value = value;
+            return;
+        }
 
-		slot = (slot + 1) & (e_hashBufferSize - 1);
-	}
+        slot = (slot + 1) & (e_hashBufferSize - 1);
+    }
 }
 
 uint HashLookup(RWStructuredBuffer<KeyValue> _hashBuffer, uint key)
 {
-	uint slot = hash(key);
+    uint slot = hash(key);
 
-	while (true)
-	{
-		if (_hashBuffer[slot].key == key)
-		{
-			return _hashBuffer[slot].value;
-		}
-		if (_hashBuffer[slot].key == s_empty)
-		{
-			return s_empty;
-		}
+    while (true)
+    {
+        if (_hashBuffer[slot].key == key)
+        {
+            return _hashBuffer[slot].value;
+        }
+        if (_hashBuffer[slot].key == s_empty)
+        {
+            return s_empty;
+        }
 
-		slot = (slot + 1) & (e_hashBufferSize - 1);
-	}
+        slot = (slot + 1) & (e_hashBufferSize - 1);
+    }
 }
 
 void HashDelete(RWStructuredBuffer<KeyValue> _hashBuffer, uint key)
 {
-	uint slot = hash(key);
+    uint slot = hash(key);
 
-	while (true)
-	{
-		if (_hashBuffer[slot].key == s_empty)
-		{
-			return;
-		}
-		if (_hashBuffer[slot].key == key)
-		{
-			_hashBuffer[slot].value = s_empty;
-			return;
-		}
-
-		slot = (slot + 1) & (e_hashBufferSize - 1);
-	}
+    while (true)
+    {
+        if (_hashBuffer[slot].key == s_empty)
+        {
+            return;
+        }
+        if (_hashBuffer[slot].key == key)
+        {
+            _hashBuffer[slot].value = s_empty;
+            return;
+        }
+        slot = (slot + 1) & (e_hashBufferSize - 1);
+    }
 }
 //***************************************************************************************
 
@@ -1280,6 +1279,12 @@ void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, ui
 	}
 }
 
+void TestVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint localCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
+{
+    GreatestStep(AdjustedToArray(adjustedIndex, e_solidPackedSize), crossYChunk - 1, globalSolidBuffer);
+
+}
+
 //Retrieve the visibility value from the hashBuffer
 bool GetVis(uint chunkIndex, uint globalRayIndex, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<KeyValue> hashTransferBuffer)
 {
@@ -1471,8 +1476,9 @@ void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
 	if(id.x < leadingEdgeCount)
 	{
 		uint globalRay = LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable);
-		GlobalVisCalc(globalRay, GlobalRayToAdjusted(globalRay, chunkIndex, _ChunkPositionTable), e_crossYChunk, e_localCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
-	}
+		//GlobalVisCalc(globalRay, GlobalRayToAdjusted(globalRay, chunkIndex, _ChunkPositionTable), e_crossYChunk, e_localCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
+        TestVisCalc(globalRay, GlobalRayToAdjusted(globalRay, chunkIndex, _ChunkPositionTable), e_crossYChunk, e_localCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
+    }
 }
 
 [numthreads(768, 1, 1)]
