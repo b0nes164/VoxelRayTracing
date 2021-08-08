@@ -37,6 +37,8 @@ public class WorldGeneration
     private static int chunkSizeY = yChunks;
     private static int chunkSizeZ = zChunks;
 
+    private int crossYChunk = 1000000000; 
+
     private ComputeBuffer chunkEdgeBuffer;
     private ComputeBuffer chunkPositionBuffer;
     private uint[] chunkEdgeTable = new uint[chunkCount];
@@ -92,8 +94,16 @@ public class WorldGeneration
     private int shadowKern;
     private int finalCullKern;
     private int initHashKern;
-
+    private int clearMeshKern;
     #endregion
+
+    //shove all kern inits into one method
+    //change the buffers so they are all only called once
+    //change names in compute shader
+    //delete old methods
+    //change count to a uint
+    // change the name of chunktable to localpositiontable in this file and the render manager
+
     public WorldGeneration(bool _render, bool _chunkInfo, ComputeShader _computeShader)
     {
         render = _render;
@@ -409,7 +419,6 @@ public class WorldGeneration
              */
         }
 
-        /*
          test = new uint[globalHeightBuffer.count];
         globalHeightBuffer.GetData(test);
         Debug.Log(test.Length);
@@ -417,7 +426,8 @@ public class WorldGeneration
         {
             Debug.Log(Convert.ToString(test[g], 2));
         }
-         */
+
+
 
         /*
           test = new uint[globalSolidBuffer.count];
@@ -428,7 +438,6 @@ public class WorldGeneration
             Debug.Log(Convert.ToString(test[g], 2));
         }
          */
-
     }
 
     public void GenerateMeshProperties()
@@ -862,9 +871,17 @@ public class WorldGeneration
 
     public void GlobalRendering(int cross)
     {
-        computeShader.SetInt("e_localCrossHeight", LocalCrossHeight(cross));
-        computeShader.SetInt("e_crossYChunk", CrossYChunk(cross));
+        bool recalculate = false;
 
+        if (crossYChunk != CrossYChunk(cross))
+        {
+            crossYChunk = CrossYChunk(cross);
+            computeShader.SetInt("e_crossYChunk", crossYChunk);
+            recalculate = true;
+        }
+            
+        computeShader.SetInt("e_localCrossHeight", LocalCrossHeight(cross));
+        
         for (int i = chunkCount; i > 0; i--)
         {
             int index = i - 1;
@@ -872,24 +889,40 @@ public class WorldGeneration
 
             if (cross > chunkPositionTable[index].y * height)
             {
-                GlobalDispatch(index);
+                GlobalDispatch(index, recalculate);
             }
         }
     }
 
-    private void GlobalDispatch(int index)
+    private void GlobalDispatch(int index, bool _recalculate)
     {
         computeShader.SetInt("chunkIndex", index);
-        ResetCountBuffer();
+        computeShader.SetBool("topEdge", false);
 
-        computeShader.SetBuffer(shadowKern, "_ChunkTable", cubeBuffer);
-        computeShader.SetBuffer(shadowKern, "_ChunkPositionTable", chunkPositionBuffer);
-        computeShader.SetBuffer(shadowKern, "_ChunkEdgeTable", chunkEdgeBuffer);
-        computeShader.SetBuffer(shadowKern, "_EdgeTable", edgeBuffer);
-        computeShader.SetBuffer(shadowKern, "_GlobalHeightTable", globalHeightBuffer);
-        computeShader.SetBuffer(shadowKern, "GlobalSolidBuffer", globalSolidBuffer);
-        computeShader.SetBuffer(shadowKern, "HashTransferBuffer", hashTransferBuffer);
-        computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+        ResetCountBuffer();
+        ClearMeshBuffer(index);
+
+        if (_recalculate)
+        {
+            computeShader.SetBuffer(shadowKern, "_ChunkTable", cubeBuffer);
+            computeShader.SetBuffer(shadowKern, "_ChunkPositionTable", chunkPositionBuffer);
+            computeShader.SetBuffer(shadowKern, "_ChunkEdgeTable", chunkEdgeBuffer);
+            computeShader.SetBuffer(shadowKern, "_EdgeTable", edgeBuffer);
+            computeShader.SetBuffer(shadowKern, "_GlobalHeightTable", globalHeightBuffer);
+            computeShader.SetBuffer(shadowKern, "GlobalSolidBuffer", globalSolidBuffer);
+            computeShader.SetBuffer(shadowKern, "HashTransferBuffer", hashTransferBuffer);
+            computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+        }
+
+
+        test = new uint[hashTransferBuffer.count * 2];
+        hashTransferBuffer.GetData(test);
+
+        for (int i = 1; i < test.Length; i += 2)
+        {
+            Debug.Log(test[i]);
+        }
+
 
         computeShader.SetBuffer(finalCullKern, "_ChunkTable", cubeBuffer);
         computeShader.SetBuffer(finalCullKern, "_ChunkPositionTable", chunkPositionBuffer);
@@ -898,7 +931,7 @@ public class WorldGeneration
         computeShader.SetBuffer(finalCullKern, "HashTransferBuffer", hashTransferBuffer);
         computeShader.SetBuffer(finalCullKern, "_Counter", countBuffer);
         computeShader.SetBuffer(finalCullKern, "_MeshProperties", mainBuffers[index]);
-        //computeShader.Dispatch(finalCullKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+        computeShader.Dispatch(finalCullKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
 
         countBuffer.GetData(count[index]);
         countBuffer.Release();
@@ -912,7 +945,7 @@ public class WorldGeneration
 
     private int CrossYChunk(int _cross)
     {
-        return Mathf.FloorToInt(_cross / height);
+        return Mathf.FloorToInt((_cross - 1)/ height);
     }
 
     //This will need to be changed alongside new buffer setting paradigms.
@@ -923,6 +956,11 @@ public class WorldGeneration
         countBuffer = new ComputeBuffer(1, sizeof(int));
         computeShader.SetBuffer(zeroCountBufferKernel, "_Counter", countBuffer);
         computeShader.Dispatch(zeroCountBufferKernel, 1, 1, 1);
+    }
+    private void ClearMeshBuffer(int _index)
+    {
+        computeShader.SetBuffer(clearMeshKern, "_MeshProperties", mainBuffers[_index]);
+        computeShader.Dispatch(clearMeshKern, Mathf.CeilToInt(cubeCount / 1024f), 1, 1);
     }
 
 
@@ -1071,6 +1109,7 @@ public class WorldGeneration
     //CHANGE THIS TO ADD ALL KERNELS TO ONE INIT
     private void InitKernChunkList()
     {
+        clearMeshKern = computeShader.FindKernel("ClearMeshProperties");
         lowKern = computeShader.FindKernel("LowVis");
         botLeftkern = computeShader.FindKernel("BottomLeftVis");
         botRightKern = computeShader.FindKernel("BottomRightVis");
@@ -1095,14 +1134,6 @@ public class WorldGeneration
 
         computeShader.SetBuffer(initHashKern, "HashTransferBuffer", hashTransferBuffer);
         computeShader.Dispatch(initHashKern, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
-
-        test = new uint[hashTransferBuffer.count * 2];
-        hashTransferBuffer.GetData(test);
-
-        foreach (uint g in test)
-        {
-            Debug.Log(g);
-        }
     }
 
     private void DispatchTransferGlobalHeights()
