@@ -315,6 +315,7 @@ MonoBehaviour:
   cam: {fileID: 963194227}
   sensitivity: 10
   zoomSense: 0.05
+  text: {fileID: 1857610603}
 --- !u!1 &1024011389
 GameObject:
   m_ObjectHideFlags: 0

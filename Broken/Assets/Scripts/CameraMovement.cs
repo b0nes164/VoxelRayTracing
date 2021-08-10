@@ -15,10 +15,9 @@ public class CameraMovement : MonoBehaviour
     [SerializeField]
     private float zoomSense;
 
-    /*
-     [SerializeField]
+    [SerializeField]
     private Text text;
-     */
+
 
     private float frameRate;
     private float time;
@@ -66,7 +65,7 @@ public class CameraMovement : MonoBehaviour
             time += Time.deltaTime;
         }
 
-        //text.text = frameRate + ", " + cam.transform.position.x + ", " + cam.transform.position.z;
+        text.text = frameRate + ", " + cam.transform.position.x + ", " + cam.transform.position.z;
 
 
     }

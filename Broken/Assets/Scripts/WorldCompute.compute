@@ -108,16 +108,18 @@ extern uint globalLength;
 extern uint globalHeight;
 extern uint globalWidth;
 extern uint globalStep;
-extern uint chunkStepDepth;
+extern uint e_chunkStepDepth;
 
 //8 by default
 extern uint e_heightPackedSize;
 //32 by default
 extern uint e_solidPackedSize;
-//15 by default
-extern uint e_heightComparison;
-//1 always
-extern uint e_solidComparison;
+
+//4 by default
+extern uint e_heightSizeInBits;
+//1 by default
+extern uint e_solidSizeInBits;
+
 
 //the y level of the current cross
 extern uint e_crossYChunk;
@@ -142,6 +144,7 @@ static uint s_shadowComparisons[16] = { 0, 32768U, 49152U, 57344U,
 
 static uint s_heightComparison = 15U;
 
+static uint s_solidComparison = 1U;
 //**************************************************
 //Bit index values.
 //LocalEdgeTable 0-2 Leading Face identifier, 3-5 Trailing Face identifier, 6 leading sides identifer, 7-18 corresponding index in adjacent chunk, 19-30 corresponding ray index from any local index. 
@@ -828,9 +831,9 @@ bool EqualToOrBelowCross(uint localBottom, uint _localCrossHeight, RWStructuredB
 
 void FinalVisCalc(uint localRay, uint localCrossHeight, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<int> counter, RWStructuredBuffer<uint3> chunkTable)
 {
-    uint cascIndex = LocRayTopToCasc(LocalRayToTop(localRay, edgeTable), localCrossHeight);
+    uint cascIndex = LocalRayToTop(localRay, edgeTable);
 		//why? because the compiler is retarded thats why
-    if (IsSolid(cascIndex, meshProperties))
+    if (IsSolid(cascIndex, meshProperties) && chunkTable[cascIndex].y <= localCrossHeight)
     {
         SetVis(cascIndex, meshProperties, counter);
         return;
@@ -839,7 +842,7 @@ void FinalVisCalc(uint localRay, uint localCrossHeight, RWStructuredBuffer<TriIn
     while (NotOnLocalTrailingEdge(cascIndex, edgeTable))
     {
         cascIndex -= stepIndex;
-        if (IsSolid(cascIndex, meshProperties))
+        if (IsSolid(cascIndex, meshProperties) && chunkTable[cascIndex].y <= localCrossHeight)
         {
             SetVis(cascIndex, meshProperties, counter);
             return;
@@ -1210,9 +1213,14 @@ uint LocalRayToGlobalRay(uint localRayIndex, uint chunkIndex, RWStructuredBuffer
 //****************************************************************************************************************************************************************************************
 //This section contains the methods used to pack the height values into buffer to save on memory
 
-uint GlobalRayToAdjusted(uint rayIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable)
+uint GlobalRayToAdjusted(uint globalRayIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable)
 {
-	return (rayIndex * chunkStepDepth) + chunkPositionTable[chunkIndex].y;
+    return globalRayIndex * e_chunkStepDepth + chunkPositionTable[chunkIndex].y;
+}
+
+uint GlobalRayToAdjusted(uint globalRayIndex, uint currentYChunk)
+{
+    return (globalRayIndex * e_chunkStepDepth) + currentYChunk;
 }
 
 uint LocalIndexToAdjustedIndex(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable)
@@ -1227,9 +1235,9 @@ uint AdjustedToArray(uint adjustedIndex, uint packedSize)
 	return floor(adjustedIndex / packedSize);
 }
 
-uint AdjustedToBit(uint adjustedIndex, uint packedSize)
+uint AdjustedToBit(uint adjustedIndex, uint packedSize, uint sizeInBits)
 {
-	return adjustedIndex % packedSize;
+    return (adjustedIndex % packedSize) * sizeInBits;
 }
 
 void LocalVisCalcs(uint localIndex, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> solidTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable)
@@ -1242,11 +1250,10 @@ void LocalVisCalcs(uint localIndex, RWStructuredBuffer<DualIndex> meshProperties
 }
 
 
-//THIS NEED FIXING
  void LocalToGlobalTransfer(uint adjustedIndex, uint localRayIndex, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint> solidTransferBuffer)
 {
-    InterlockedOr(globalHeightTable[AdjustedToArray(adjustedIndex, e_heightPackedSize)], heightTransferBuffer[localRayIndex] << (AdjustedToBit(adjustedIndex, e_heightPackedSize) * 4));
-    InterlockedOr(globalSolidBuffer[AdjustedToArray(adjustedIndex, e_solidPackedSize)], solidTransferBuffer[localRayIndex] << (AdjustedToBit(adjustedIndex, e_solidPackedSize) * 1));
+    InterlockedOr(globalHeightTable[AdjustedToArray(adjustedIndex, e_heightPackedSize)], heightTransferBuffer[localRayIndex] << AdjustedToBit(adjustedIndex, e_heightPackedSize, e_heightSizeInBits));
+    InterlockedOr(globalSolidBuffer[AdjustedToArray(adjustedIndex, e_solidPackedSize)], solidTransferBuffer[localRayIndex] << AdjustedToBit(adjustedIndex, e_solidPackedSize, e_solidSizeInBits));
 }
 
 //Transfer the locally calculated rays from the temp buffer to the global buffer
@@ -1258,7 +1265,7 @@ void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuf
 //Test overloads ignore
 void LocalToGlobalTransfer(uint adjustedIndex, uint localRayIndex, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint> solidTransferBuffer)
 {
-	InterlockedOr(globalSolidBuffer[AdjustedToArray(adjustedIndex, e_solidPackedSize)], solidTransferBuffer[localRayIndex] << AdjustedToBit(adjustedIndex, e_solidPackedSize));
+	InterlockedOr(globalSolidBuffer[AdjustedToArray(adjustedIndex, e_solidPackedSize)], solidTransferBuffer[localRayIndex] << AdjustedToBit(adjustedIndex, e_solidPackedSize, e_solidSizeInBits));
 }
 void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuffer<uint3> chunkTable, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint> solidTransferBuffer)
 {
@@ -1266,15 +1273,9 @@ void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuf
 }
 
 //returns the value of any global buffer
-uint GetGlobalValue(uint adjustedIndex, uint packedSize, uint comparison, RWStructuredBuffer<uint> globalBuffer)
+uint GetGlobalValue(uint adjustedIndex, uint packedSize, uint sizeInBits, uint comparison, RWStructuredBuffer<uint> globalBuffer)
 {
-	return (globalBuffer[AdjustedToArray(adjustedIndex, packedSize)] >> AdjustedToBit(adjustedIndex, packedSize)) & comparison;
-}
-
-//only works for the solid buffer
-uint GetGlobalValueStep(uint solidArrayIndex, uint comparison, uint step, RWStructuredBuffer<uint> globalBuffer)
-{
-	return (globalBuffer[solidArrayIndex] >> step) & comparison;
+	return (globalBuffer[AdjustedToArray(adjustedIndex, packedSize)] >> AdjustedToBit(adjustedIndex, packedSize, sizeInBits)) & comparison;
 }
 
 //*******************************************************************************************************************************************************************************************
@@ -1285,8 +1286,8 @@ uint CreateShadowComparison(uint difference)
 	uint comparison = 0;
 	for (uint i = 0; i < difference; i++)
 	{
-		comparison |= (1U << (chunkStepDepth - i));
-	}
+        comparison |= (1U << (e_chunkStepDepth - i));
+    }
 
 	return comparison;
 }
@@ -1295,48 +1296,42 @@ uint CreateShadowComparison(uint difference)
 //note adjustment to chunkStepDepth
 uint StepDifference(uint chunkIndex, RWStructuredBuffer<uint3> chunkPositionTable)
 {
-	return (chunkStepDepth - 1) - chunkPositionTable[chunkIndex].y;
+    return (e_chunkStepDepth - 1) - chunkPositionTable[chunkIndex].y;
 }
 
 //global method to determine whether a chunk is in shadow
 bool InShadow(uint adjustedIndex, uint chunkIndex, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<uint3> chunkPositionTable)
 {
-	return GetGlobalValue(adjustedIndex, e_solidPackedSize, CreateShadowComparison(StepDifference(chunkIndex, chunkPositionTable)), globalSolidBuffer) > 0;
+	return GetGlobalValue(adjustedIndex, e_solidPackedSize, e_solidSizeInBits, CreateShadowComparison(StepDifference(chunkIndex, chunkPositionTable)), globalSolidBuffer) > 0;
 }
 
 //returns the greatest chunk less than or equal to the current chunkIndex position
-uint GreatestStep(uint arrayIndex, uint currentYChunk, RWStructuredBuffer<uint> globalSolidBuffer)
+uint GreatestStep(uint globalRayIndex, uint currentYChunk, RWStructuredBuffer<uint> globalSolidBuffer)
 {
 	for (int i = currentYChunk; i > -1; i--)
 	{
-		if (GetGlobalValueStep(arrayIndex, 1U, i, globalSolidBuffer) == 1)
+        if (GetGlobalValue(GlobalRayToAdjusted(globalRayIndex, i), e_solidPackedSize, e_solidSizeInBits, s_solidComparison, globalSolidBuffer) == 1)
 		{
 			return i;
 		}
 	}
 
 	//will only reach this point if the there are no solids at or below the chunk y level
-	return chunkStepDepth + 1;
+    return e_chunkStepDepth + 1;
 }
 
 
 //Return which chunk in the ray progression is visible, only one chunk can be visible at a time
 void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint localCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
 {
-	if (localCrossHeight < GetGlobalValue(adjustedIndex, e_heightPackedSize, s_heightComparison, globalHeightTable))
+	if (localCrossHeight < GetGlobalValue(adjustedIndex, e_heightPackedSize, e_heightSizeInBits, s_heightComparison, globalHeightTable))
 	{
-		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(AdjustedToArray(adjustedIndex, e_solidPackedSize), crossYChunk - 1, globalSolidBuffer));
+		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk - 1, globalSolidBuffer));
 	}
 	else
 	{
-		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(AdjustedToArray(adjustedIndex, e_solidPackedSize), crossYChunk, globalSolidBuffer));
+		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk, globalSolidBuffer));
 	}
-}
-
-void TestVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint localCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
-{
-    GreatestStep(AdjustedToArray(adjustedIndex, e_solidPackedSize), crossYChunk - 1, globalSolidBuffer);
-
 }
 
 //Retrieve the visibility value from the hashBuffer
@@ -1547,8 +1542,8 @@ void FinalCull(uint3 id : SV_DispatchThreadID)
 	{
 		if (GetVis(chunkIndex, LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable), _ChunkPositionTable, HashTransferBuffer))
 		{
-            calculateVisibility(_Counter, _MeshProperties, _EdgeTable, LocalRayToTop(id.x, _EdgeTable), true, true, 0);
-            //FinalVisCalc(id.x, e_localCrossHeight, _EdgeTable, _MeshProperties, _Counter, _ChunkTable);
+            //calculateVisibility(_Counter, _MeshProperties, _EdgeTable, LocalRayToTop(id.x, _EdgeTable), true, true, 0);
+            FinalVisCalc(id.x, e_localCrossHeight, _EdgeTable, _MeshProperties, _Counter, _ChunkTable);
         }
 	}
 }
