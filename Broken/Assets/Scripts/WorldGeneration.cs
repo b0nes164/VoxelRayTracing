@@ -13,9 +13,9 @@ public class WorldGeneration
     private ComputeShader computeShader;
     private bool chunkInfo;
 
-    private static readonly int xChunks = 2;
-    private static readonly int yChunks = 1;
-    private static readonly int zChunks = 2;
+    private static readonly int xChunks = 5;
+    private static readonly int yChunks = 3;
+    private static readonly int zChunks = 5;
     private static int chunkCount = xChunks * yChunks * zChunks;
 
     private static int length = 16;
@@ -31,7 +31,8 @@ public class WorldGeneration
     private static int globalWidth = zChunks * width;
     private static int globalLeadingEdgeCount = (globalLength * globalWidth) + (globalLength * (globalHeight - 1)) + ((globalWidth - 1) * (globalHeight - 1));
     private static int globalStep = (globalWidth * globalHeight) + globalWidth + 1;
-    private static int chunkStepDepth = Mathf.Min(Mathf.Min(xChunks, yChunks), zChunks);
+    //private static int chunkStepDepth = Mathf.Min(Mathf.Min(xChunks, yChunks), zChunks);
+    private static int chunkStepDepth = 9;
 
     private static int chunkSizeX = xChunks;
     private static int chunkSizeY = yChunks;
@@ -64,7 +65,6 @@ public class WorldGeneration
     private MaterialPropertyBlock[] propertyBlocks = new MaterialPropertyBlock[chunkCount];
 
 
-    private ComputeBuffer CalcBuffer;
     private List<ChunkStruct> chunkList = new List<ChunkStruct>();
 
     private int[] xOffset = new int[chunkCount];
@@ -274,6 +274,16 @@ public class WorldGeneration
                 Debug.Log(Convert.ToString(g, 2));
             }
              */
+
+            /*
+             test = new uint[heightTransferBuffer.count];
+            heightTransferBuffer.GetData(test);
+            foreach (uint g in test)
+            {
+                Debug.Log(Convert.ToString(g, 2));
+            }
+             */
+
 
             ResetLocalTransferBuffers();
 
@@ -913,23 +923,16 @@ public class WorldGeneration
         computeShader.SetBuffer(shadowKern, "HashTransferBuffer", hashTransferBuffer);
         computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
 
-        if (_recalculate)
+        if (false)
         {
-            
+            test = new uint[hashTransferBuffer.count * 2];
+            hashTransferBuffer.GetData(test);
+
+            for (int i = 1; i < test.Length; i += 2)
+            {
+                Debug.Log(test[i]);
+            }
         }
-
-        /*
-         * test = new uint[hashTransferBuffer.count * 2];
-        hashTransferBuffer.GetData(test);
-
-        for (int i = 1; i < test.Length; i += 2)
-        {
-            Debug.Log(test[i]);
-        }
-         */
-
-
-
 
         computeShader.SetBuffer(finalCullKern, "_ChunkTable", cubeBuffer);
         computeShader.SetBuffer(finalCullKern, "_ChunkPositionTable", chunkPositionBuffer);
@@ -1138,7 +1141,6 @@ public class WorldGeneration
         int size = (x * z) + (x * (y - 1)) + ((z - 1) * (y - 1));
         hashTransferBuffer = new ComputeBuffer((int)Mathf.Pow(2, HeightToBits(size)), sizeof(uint) * 2);
         computeShader.SetInt("e_hashBufferSize", hashTransferBuffer.count);
-
         computeShader.SetBuffer(initHashKern, "HashTransferBuffer", hashTransferBuffer);
         computeShader.Dispatch(initHashKern, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
     }
