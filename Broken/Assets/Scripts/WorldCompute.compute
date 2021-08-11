@@ -126,6 +126,8 @@ extern uint e_crossYChunk;
 // size of the hashBuffer
 extern uint e_hashBufferSize;
 
+extern uint e_trueCrossHeight;
+
 extern bool topEdge;
 extern uint e_localCrossHeight;
 extern uint trueHeight;
@@ -802,12 +804,6 @@ void calculateVisibility(RWStructuredBuffer<int> counter, RWStructuredBuffer<Dua
 
 //*******************************************************
 //new methods
-uint LocRayTopToCasc(uint _localRayTop, uint _localCrossHeight)
-{
-    return _localRayTop - (height - (_localCrossHeight + 1)) * stepIndex;
-
-}
-
 bool NotOnLocalTrailingEdge(uint _index, RWStructuredBuffer<TriIndex> _edgeTable)
 {
     return ((_edgeTable[_index].lowIndex >> s_localEdgeTrailingFace) & 0x7) == 7;
@@ -824,28 +820,45 @@ void SetVis(uint _index, RWStructuredBuffer<DualIndex> _meshProperties,RWStructu
     _meshProperties[_index].lowIndex |= 1U << 12;
 }
 
-bool EqualToOrBelowCross(uint localBottom, uint _localCrossHeight, RWStructuredBuffer<uint3> _chunkTable)
-{
-    return _chunkTable[localBottom].y < _localCrossHeight;
-}
 
-void FinalVisCalc(uint localRay, uint localCrossHeight, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<int> counter, RWStructuredBuffer<uint3> chunkTable)
+void FinalVisCalc(uint localRay, uint localCrossHeight, uint _currentYChunk, uint _crossYChunk, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<int> counter, RWStructuredBuffer<uint3> chunkTable)
 {
     uint cascIndex = LocalRayToTop(localRay, edgeTable);
-		//why? because the compiler is retarded thats why
-    if (IsSolid(cascIndex, meshProperties) && chunkTable[cascIndex].y <= localCrossHeight)
-    {
-        SetVis(cascIndex, meshProperties, counter);
-        return;
-    }
 	
-    while (NotOnLocalTrailingEdge(cascIndex, edgeTable))
+    if (_currentYChunk == _crossYChunk)
     {
-        cascIndex -= stepIndex;
+		//why? because the compiler is retarded thats why
         if (IsSolid(cascIndex, meshProperties) && chunkTable[cascIndex].y <= localCrossHeight)
         {
             SetVis(cascIndex, meshProperties, counter);
             return;
+        }
+	
+        while (NotOnLocalTrailingEdge(cascIndex, edgeTable))
+        {
+            cascIndex -= stepIndex;
+            if (IsSolid(cascIndex, meshProperties) && chunkTable[cascIndex].y <= localCrossHeight)
+            {
+                SetVis(cascIndex, meshProperties, counter);
+                return;
+            }
+        }
+    }
+    else
+    {
+        if (IsSolid(cascIndex, meshProperties))
+        {
+            SetVis(cascIndex, meshProperties, counter);
+            return;
+        }
+        while (NotOnLocalTrailingEdge(cascIndex, edgeTable))
+        {
+            cascIndex -= stepIndex;
+            if (IsSolid(cascIndex, meshProperties))
+            {
+                SetVis(cascIndex, meshProperties, counter);
+                return;
+            }
         }
     }
 }
@@ -928,29 +941,7 @@ void calcGlobalVis(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<ui
 	{
 		InterlockedOr(chunkVisibilityTable[index], 1U << adjustedBitIndex);
 	}
-	
 
-	/*
-	* if (chunkHeight <= currentYChunk)
-	{
-		if ((chunkVisibilityTable[index] >> 4) & 1U == 1)
-		{
-			InterlockedOr(chunkVisibilityTable[index], 1U << adjustedBitIndex);
-		}
-	}
-	*/
-	
-
-	/*
-	Just for my own reference
-	else
-	{
-		chunkVisbilityTable[index] |= (0U << adjustedBitIndex);
-		
-		 
-	}
-	*/
-	
 }
 
 //returns the local index of the corresponding next chunk in a ray
@@ -1364,9 +1355,9 @@ uint GreatestStep(uint globalRayIndex, uint currentYChunk, RWStructuredBuffer<ui
 
 
 //Return which chunk in the ray progression is visible, only one chunk can be visible at a time
-void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint localCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
+void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint trueCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
 {
-	if (localCrossHeight < GetGlobalValue(adjustedIndex, e_heightPackedSize, e_heightSizeInBits, s_heightComparison, globalHeightTable))
+    if (trueCrossHeight < (GetGlobalValue(adjustedIndex, e_heightPackedSize, e_heightSizeInBits, s_heightComparison, globalHeightTable) + (crossYChunk * height)))
 	{
 		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk - 1, globalSolidBuffer));
 	}
@@ -1376,12 +1367,20 @@ void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, ui
 	}
 }
 
-//Retrieve the visibility value from the hashBuffer
-bool GetVis(uint chunkIndex, uint globalRayIndex, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<KeyValue> hashTransferBuffer)
+bool FinalCheck(uint globalRayIndex, uint currentYLevel, RWStructuredBuffer<KeyValue> hashTransferBuffer)
 {
-	return (chunkPositionTable[chunkIndex].y == HashLookup(hashTransferBuffer, globalRayIndex));
+    uint visInfo = HashLookup(hashTransferBuffer, globalRayIndex);
+	
+    if (((visInfo >> 4) & 1) == 0 && (visInfo & 15U) == currentYLevel)
+    {
+        HashInsert(HashTransferBuffer, globalRayIndex, (visInfo | (1 << 4)));
+        return true;
+    }
+	else
+    {
+        return false;
+    }
 }
-
 //************************************************************************
 
 [numthreads(1, 1, 1)]
@@ -1573,7 +1572,7 @@ void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
 	if(id.x < leadingEdgeCount)
 	{
 		uint globalRay = LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable);
-		GlobalVisCalc(globalRay, GlobalRayToAdjusted(globalRay, chunkIndex, _ChunkPositionTable), e_crossYChunk, e_localCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
+		GlobalVisCalc(globalRay, GlobalRayToAdjusted(globalRay, chunkIndex, _ChunkPositionTable), e_crossYChunk, e_trueCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
     }
 }
 
@@ -1582,10 +1581,12 @@ void FinalCull(uint3 id : SV_DispatchThreadID)
 {
 	if(id.x < leadingEdgeCount)
 	{
-		if (GetVis(chunkIndex, LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable), _ChunkPositionTable, HashTransferBuffer))
+        uint globalRayIndex = LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable);
+        
+        if (FinalCheck(globalRayIndex, currentYChunk, HashTransferBuffer))
 		{
             //calculateVisibility(_Counter, _MeshProperties, _EdgeTable, LocalRayToTop(id.x, _EdgeTable), true, true, 0);
-            FinalVisCalc(id.x, e_localCrossHeight, _EdgeTable, _MeshProperties, _Counter, _ChunkTable);
+            FinalVisCalc(id.x, e_localCrossHeight, currentYChunk, e_crossYChunk, _EdgeTable, _MeshProperties, _Counter, _ChunkTable);
         }
 	}
 }

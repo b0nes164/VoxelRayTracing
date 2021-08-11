@@ -892,8 +892,38 @@ public class WorldGeneration
             computeShader.SetInt("e_crossYChunk", crossYChunk);
             recalculate = true;
         }
-            
         computeShader.SetInt("e_localCrossHeight", LocalCrossHeight(cross));
+        computeShader.SetInt("e_trueCrossHeight", cross - 1);
+
+        for (int i = chunkCount; i > 0; i--)
+        {
+            int index = i - 1;
+            if (cross > chunkPositionTable[index].y * height)
+            {
+                computeShader.SetInt("chunkIndex", index);
+                computeShader.SetInt("currentYChunk", chunkPositionTable[index].y);
+
+                computeShader.SetBuffer(shadowKern, "_ChunkTable", cubeBuffer);
+                computeShader.SetBuffer(shadowKern, "_ChunkPositionTable", chunkPositionBuffer);
+                computeShader.SetBuffer(shadowKern, "_ChunkEdgeTable", chunkEdgeBuffer);
+                computeShader.SetBuffer(shadowKern, "_EdgeTable", edgeBuffer);
+                computeShader.SetBuffer(shadowKern, "_GlobalHeightTable", globalHeightBuffer);
+                computeShader.SetBuffer(shadowKern, "GlobalSolidBuffer", globalSolidBuffer);
+                computeShader.SetBuffer(shadowKern, "HashTransferBuffer", hashTransferBuffer);
+                computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+            }
+        }
+
+        /*
+                 test = new uint[hashTransferBuffer.count * 2];
+                hashTransferBuffer.GetData(test);
+                for (int g = 1; g < 1000; g += 2)
+                {
+                    Debug.Log(test[g]);
+                }
+                 */
+
+
         for (int i = chunkCount; i > 0; i--)
         {
             int index = i - 1;
@@ -904,35 +934,23 @@ public class WorldGeneration
                 GlobalDispatch(index, recalculate);
             }
         }
+
+         test = new uint[hashTransferBuffer.count * 2];
+        hashTransferBuffer.GetData(test);
+        for (int i = 1; i < test.Length; i += 2)
+        {
+            Debug.Log(test[i]);
+        }
     }
 
     private void GlobalDispatch(int index, bool _recalculate)
     {
         computeShader.SetInt("chunkIndex", index);
-        computeShader.SetBool("topEdge", false);
+        computeShader.SetInt("currentYChunk", chunkPositionTable[index].y);
 
+        computeShader.SetBool("topEdge", false);
         ResetCountBuffer();
         ClearMeshBuffer(index);
-
-        computeShader.SetBuffer(shadowKern, "_ChunkTable", cubeBuffer);
-        computeShader.SetBuffer(shadowKern, "_ChunkPositionTable", chunkPositionBuffer);
-        computeShader.SetBuffer(shadowKern, "_ChunkEdgeTable", chunkEdgeBuffer);
-        computeShader.SetBuffer(shadowKern, "_EdgeTable", edgeBuffer);
-        computeShader.SetBuffer(shadowKern, "_GlobalHeightTable", globalHeightBuffer);
-        computeShader.SetBuffer(shadowKern, "GlobalSolidBuffer", globalSolidBuffer);
-        computeShader.SetBuffer(shadowKern, "HashTransferBuffer", hashTransferBuffer);
-        computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
-
-        if (false)
-        {
-            test = new uint[hashTransferBuffer.count * 2];
-            hashTransferBuffer.GetData(test);
-
-            for (int i = 1; i < test.Length; i += 2)
-            {
-                Debug.Log(test[i]);
-            }
-        }
 
         computeShader.SetBuffer(finalCullKern, "_ChunkTable", cubeBuffer);
         computeShader.SetBuffer(finalCullKern, "_ChunkPositionTable", chunkPositionBuffer);
