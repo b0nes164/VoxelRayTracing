@@ -935,12 +935,14 @@ public class WorldGeneration
             }
         }
 
+        /*
          test = new uint[hashTransferBuffer.count * 2];
         hashTransferBuffer.GetData(test);
         for (int i = 1; i < test.Length; i += 2)
         {
             Debug.Log(test[i]);
         }
+         */
     }
 
     private void GlobalDispatch(int index, bool _recalculate)
