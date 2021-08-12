@@ -448,15 +448,16 @@ public class WorldGeneration
 
 
 
-        /*
-         test = new uint[globalSolidBuffer.count];
+        test = new uint[globalSolidBuffer.count];
         globalSolidBuffer.GetData(test);
         Debug.Log(test.Length);
         for (int g = 0; g < test.Length; g++)
         {
-            Debug.Log(Convert.ToString(test[g], 2));
+            for(int i = 0; i < 32; i++)
+            {
+                Debug.Log((test[g] >> i) & 1);
+            }
         }
-         */
     }
 
     public void GenerateMeshProperties()
@@ -920,12 +921,15 @@ public class WorldGeneration
                 computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
             }
 
-            test = new uint[bugBugger.count];
+            /*
+             test = new uint[bugBugger.count];
             bugBugger.GetData(test);
             foreach (uint g in test)
             {
                 Debug.Log(g);
             }
+             */
+
 
 
         }
