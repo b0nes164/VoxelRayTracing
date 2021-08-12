@@ -242,8 +242,7 @@ public class WorldGeneration
         }
 
 
-        /*
-         test = new uint[globalHeightBuffer.count];
+        test = new uint[globalHeightBuffer.count];
         globalHeightBuffer.GetData(test);
         Debug.Log(test.Length);
         for (int g = 0; g < test.Length; g++)
@@ -253,7 +252,7 @@ public class WorldGeneration
                 Debug.Log((g >> (i * 4)) & 15U);
             }
         }
-         */
+
 
         /*
          test = new uint[globalSolidBuffer.count];
