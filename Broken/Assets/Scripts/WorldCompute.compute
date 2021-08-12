@@ -1578,10 +1578,6 @@ void FinalCull(uint3 id : SV_DispatchThreadID)
 }
 
 
-
-
-
-
 [numthreads(1024, 1, 1)]
 void ChunkGlobalVis(uint3 id : SV_DispatchThreadID)
 {
