@@ -178,7 +178,6 @@ public class WorldGeneration
         computeShader.Dispatch(initializeGlobalHeightKernel, Mathf.CeilToInt(globalHeightBuffer.count / 1024f), 1, 1);
 
         InitKernLocalTransferBuffers();
-        InitKernTransferGlobalHeights();
         InitKernGlobalSolids();
         InitKernChunkList();
         InitHashTransferBuffer();
@@ -528,14 +527,10 @@ public class WorldGeneration
         computeShader.Dispatch(initializeGlobalSolidsKernel, Mathf.CeilToInt(leadingEdgeCount / 1024f), 1, 1);
     }
 
-    private void InitKernTransferGlobalHeights()
-    {
-        transferGlobalHeightsKernel = computeShader.FindKernel("TransferGlobalHeights");
-    }
-
     //CHANGE THIS TO ADD ALL KERNELS TO ONE INIT
     private void InitKernChunkList()
     {
+        transferGlobalHeightsKernel = computeShader.FindKernel("TransferGlobalHeights");
         clearMeshKern = computeShader.FindKernel("ClearMeshProperties");
         lowKern = computeShader.FindKernel("LowVis");
         botLeftkern = computeShader.FindKernel("BottomLeftVis");
