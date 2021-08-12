@@ -111,7 +111,6 @@ public class WorldGeneration
 
     private void InitializeShaderValues()
     {
-        bugBugger = new ComputeBuffer(leadingEdgeCount, sizeof(uint));
         computeShader.SetInt("stepIndex", step);
         computeShader.SetInt("cubeCount", cubeCount);
         computeShader.SetInt("xChunks", xChunks);
@@ -184,6 +183,8 @@ public class WorldGeneration
 
         PopulateChunkList();
         SortChunkList(chunkList);
+
+        bugBugger = new ComputeBuffer(721, sizeof(uint));
     }
 
     public void GenerateWorld()
@@ -241,7 +242,7 @@ public class WorldGeneration
             */
         }
 
-
+        /*
         test = new uint[globalHeightBuffer.count];
         globalHeightBuffer.GetData(test);
         Debug.Log(test.Length);
@@ -252,17 +253,17 @@ public class WorldGeneration
                 Debug.Log((g >> (i * 4)) & 15U);
             }
         }
-
+        */
 
         /*
-         test = new uint[globalSolidBuffer.count];
+        test = new uint[globalSolidBuffer.count];
         globalSolidBuffer.GetData(test);
         Debug.Log(test.Length);
         for (int g = 0; g < test.Length; g++)
         {
             Debug.Log(Convert.ToString(test[g], 2));
         }
-         */
+        */
     }
 
     private void GenerateRenderProperties(int index)
@@ -304,6 +305,8 @@ public class WorldGeneration
         computeShader.SetInt("e_localCrossHeight", LocalCrossHeight(cross));
         computeShader.SetInt("e_trueCrossHeight", cross - 1);
 
+        ResetHashBuffer();
+
         for (int i = chunkCount; i > 0; i--)
         {
             int index = i - 1;
@@ -319,18 +322,31 @@ public class WorldGeneration
                 computeShader.SetBuffer(shadowKern, "_GlobalHeightTable", globalHeightBuffer);
                 computeShader.SetBuffer(shadowKern, "GlobalSolidBuffer", globalSolidBuffer);
                 computeShader.SetBuffer(shadowKern, "HashTransferBuffer", hashTransferBuffer);
+                computeShader.SetBuffer(shadowKern, "BugBuffer", bugBugger);
                 computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+
+
+                /*
+                 test = new uint[bugBugger.count];
+                bugBugger.GetData(test);
+
+                foreach (uint g in test)
+                {
+                    Debug.Log(g);
+                }
+                 */
             }
         }
 
+        
         /*
-                 test = new uint[hashTransferBuffer.count * 2];
-                hashTransferBuffer.GetData(test);
-                for (int g = 1; g < 1000; g += 2)
-                {
-                    Debug.Log(test[g]);
-                }
-                 */
+         test = new uint[hashTransferBuffer.count * 2];
+        hashTransferBuffer.GetData(test);
+        for (int g = 1; g < test.Length; g += 2)
+        {
+            Debug.Log(test[g]);
+        }
+         */
 
 
         for (int i = chunkCount; i > 0; i--)
@@ -403,6 +419,10 @@ public class WorldGeneration
         computeShader.Dispatch(clearMeshKern, Mathf.CeilToInt(cubeCount / 1024f), 1, 1);
     }
 
+    private void ResetHashBuffer()
+    {
+        computeShader.Dispatch(initHashKern, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
+    }
 
 
     public ref MaterialPropertyBlock[] GetPropertyBlocks()

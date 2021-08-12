@@ -907,7 +907,7 @@ uint LocalIndexToAdjustedIndex(uint localIndex, uint chunkIndex, RWStructuredBuf
 
 uint AdjustedToArray(uint adjustedIndex, uint packedSize)
 {
-	return floor(adjustedIndex / packedSize);
+    return floor(adjustedIndex / packedSize);
 }
 
 uint AdjustedToBit(uint adjustedIndex, uint packedSize, uint sizeInBits)
@@ -986,12 +986,13 @@ void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuf
 // Global Visibility Calcs
 
 //returns the greatest chunk less than or equal to the current chunkIndex position
-uint GreatestStep(uint globalRayIndex, uint currentYChunk, RWStructuredBuffer<uint> globalSolidBuffer)
+uint GreatestStep(uint bugIndex, uint _globalRayIndex, uint _currentYChunk, RWStructuredBuffer<uint> _globalSolidBuffer)
 {
-	for (int i = currentYChunk; i > -1; i--)
+    
+	for (int i = _currentYChunk; i > -1; i--)
 	{
-        if (GetGlobalValue(GlobalRayToAdjusted(globalRayIndex, i), e_solidPackedSize, e_solidSizeInBits, s_solidComparison, globalSolidBuffer) == 1)
-		{
+        if (GetGlobalValue(GlobalRayToAdjusted(_globalRayIndex, i), e_solidPackedSize, e_solidSizeInBits, s_solidComparison, _globalSolidBuffer) == 1)
+        {
 			return i;
 		}
 	}
@@ -1002,16 +1003,18 @@ uint GreatestStep(uint globalRayIndex, uint currentYChunk, RWStructuredBuffer<ui
 
 
 //Return which chunk in the ray progression is visible, only one y level can be visible at a time
-void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint trueCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
+void GlobalVisCalc(uint bugIndex, uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint trueCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
 {
     if (trueCrossHeight < (GetGlobalValue(adjustedIndex, e_heightPackedSize, e_heightSizeInBits, s_heightComparison, globalHeightTable) + (crossYChunk * height)))
 	{
-		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk - 1, globalSolidBuffer));
+		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(bugIndex, globalRayIndex, crossYChunk - 1, globalSolidBuffer));
 	}
 	else
 	{
-		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk, globalSolidBuffer));
-	}
+		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(bugIndex, globalRayIndex, crossYChunk, globalSolidBuffer));
+		
+        BugBuffer[bugIndex] = GreatestStep(bugIndex, globalRayIndex, crossYChunk, globalSolidBuffer);
+    }
 }
 
 //******************************************************************************************************************************
@@ -1241,7 +1244,7 @@ void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
 	if(id.x < leadingEdgeCount)
 	{
 		uint globalRayIndex = LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable);
-        GlobalVisCalc(globalRayIndex, GlobalRayToAdjusted(globalRayIndex, e_crossYChunk), e_crossYChunk, e_trueCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
+        GlobalVisCalc(id.x, globalRayIndex, GlobalRayToAdjusted(globalRayIndex, e_crossYChunk), e_crossYChunk, e_trueCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
     }
 }
 
@@ -1283,25 +1286,25 @@ void BottomRightVis(uint3 id : SV_DispatchThreadID)
 [numthreads(768, 1, 1)]
 void CenterBottomVis(uint3 id : SV_DispatchThreadID)
 {
-	
+    return;
 }
 
 [numthreads(768, 1, 1)]
 void DiagonalMiddleVis(uint3 id : SV_DispatchThreadID)
 {
-	
+   
 }
 
 [numthreads(768, 1, 1)]
 void MiddleLeftVis(uint3 id : SV_DispatchThreadID)
 {
-	
+ 
 }
 
 [numthreads(768, 1, 1)]
 void MiddleRightVis(uint3 id : SV_DispatchThreadID)
 {
-	
+  
 }
 
 	
