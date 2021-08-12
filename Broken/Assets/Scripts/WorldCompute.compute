@@ -4,15 +4,15 @@
 #pragma kernel InitializeGlobalSolidBuffer
 #pragma kernel InitializeLocalTransferBuffers
 #pragma kernel InitializeHashTransferBuffer
-#pragma kernel InitializeCubes
-#pragma kernel InitializeChunks
+#pragma kernel InitializeLocalReference
+#pragma kernel InitializeChunkReference
 #pragma kernel SingleThread
 #pragma kernel InitializeRays
 #pragma kernel Noise
 #pragma kernel CheckFaces
 #pragma kernel PopulateRender 
 #pragma kernel ChunkVisibilityTable
-#pragma kernel TransferGlobalHeights
+#pragma kernel TransferToGlobal
 #pragma kernel GlobalShadowCalcs
 #pragma kernel FinalCull
 #pragma kernel LowVis
@@ -73,40 +73,33 @@ StructuredBuffer<uint> _TopRightChunk;
 StructuredBuffer<uint> _MiddleTopChunk;
 StructuredBuffer<uint> _MiddleRightChunk;
 
-StructuredBuffer<DualIndex> _IntDiagonalMiddleChunk;
-StructuredBuffer<DualIndex> _IntMiddleLeftChunk;
-StructuredBuffer<DualIndex> _IntMiddleRightChunk;
+extern uint e_localChunkSize;
+extern uint e_stepIndex;
 
-extern uint cubeCount;
-extern uint leadingEdgeCount;
-extern uint stepIndex;
-extern uint counter;
-extern uint length;
-extern uint height;
-extern uint width;
-extern uint xChunks;
-extern uint yChunks;
-extern uint zChunks;
+extern uint e_xChunks;
+extern uint e_yChunks;
+extern uint e_zChunks;
+
+extern uint e_length;
+extern uint e_height;
+extern uint e_width;
+
+extern uint e_leadingEdgeCount;
+extern uint e_globalLength;
+extern uint e_globalHeight;
+extern uint e_globalWidth;
+
+extern uint e_globalStepIndex;
+extern uint e_chunkStepDepth;
+
+extern uint e_heightPackedSize;
+extern uint e_solidPackedSize;
+extern uint e_heightSizeInBits;
+extern uint e_solidSizeInBits;
+
 extern uint xOffset;
 extern uint yOffset;
 extern uint zOffset;
-
-extern uint globalLength;
-extern uint globalHeight;
-extern uint globalWidth;
-extern uint globalStep;
-extern uint e_chunkStepDepth;
-
-//8 by default
-extern uint e_heightPackedSize;
-//32 by default
-extern uint e_solidPackedSize;
-
-//4 by default
-extern uint e_heightSizeInBits;
-//1 by default
-extern uint e_solidSizeInBits;
-
 
 //the y level of the current cross
 extern uint e_crossYChunk;
@@ -405,9 +398,9 @@ uint LimitingDim(uint3 pos)
 //edge check specific to the local level
 uint LocalEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkTable)
 {
-	bool isTop = IsOnLeadingEdge(chunkTable[localIndex].y, height);
-	bool isLeft = IsOnLeadingEdge(chunkTable[localIndex].x, length);
-	bool isRight = IsOnLeadingEdge(chunkTable[localIndex].z, width);
+    bool isTop = IsOnLeadingEdge(chunkTable[localIndex].y, e_height);
+    bool isLeft = IsOnLeadingEdge(chunkTable[localIndex].x, e_length);
+	bool isRight = IsOnLeadingEdge(chunkTable[localIndex].z, e_width);
 	uint edgeCase;
 
 	if (isLeft)
@@ -422,8 +415,8 @@ uint LocalEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkTable)
 				edgeCase |= (1U << s_localEdgeLeadingSides);
 
 				//store the adjacent index for this case
-				edgeCase |= (localIndex - (cubeCount - 1)) << s_localEdgeNextIndex;
-			}
+                edgeCase |= (localIndex - (e_localChunkSize - 1)) << s_localEdgeNextIndex;
+            }
 			else
 			{
 				//Top Left
@@ -431,8 +424,8 @@ uint LocalEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkTable)
 
 				edgeCase |= (1U << s_localEdgeLeadingSides);
 
-				edgeCase |= (localIndex - (cubeCount - (width + 1))) << s_localEdgeNextIndex;
-			}
+                edgeCase |= (localIndex - (e_localChunkSize - (e_width + 1))) << s_localEdgeNextIndex;
+            }
 		}
 		else
 		{
@@ -443,8 +436,8 @@ uint LocalEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkTable)
 
 				edgeCase |= (1U << s_localEdgeLeadingSides);
 
-				edgeCase |= (localIndex - (cubeCount - ((width * height) + 1))) << s_localEdgeNextIndex;
-			}
+                edgeCase |= (localIndex - (e_localChunkSize - ((e_width * e_height) + 1))) << s_localEdgeNextIndex;
+            }
 			else
 			{
 				//Middle Left
@@ -452,8 +445,8 @@ uint LocalEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkTable)
 
 				edgeCase |= (1U << s_localEdgeLeadingSides);
 
-				edgeCase |= (localIndex - (cubeCount - ((width * height) + width))) << s_localEdgeNextIndex;
-			}
+                edgeCase |= (localIndex - (e_localChunkSize - ((e_width * e_height) + e_width))) << s_localEdgeNextIndex;
+            }
 		}
 	}
 	else
@@ -474,8 +467,8 @@ uint LocalEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkTable)
 				//Top Middle
 				edgeCase = 5;
 
-				edgeCase |= (localIndex + width + 1) << s_localEdgeNextIndex;
-			}
+                edgeCase |= (localIndex + e_width + 1) << s_localEdgeNextIndex;
+            }
 		}
 		else
 		{
@@ -486,8 +479,8 @@ uint LocalEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkTable)
 
 				edgeCase |= (1U << s_localEdgeLeadingSides);
 
-				edgeCase |= (localIndex + (width * height) + 1) << s_localEdgeNextIndex;
-			}
+                edgeCase |= (localIndex + (e_width * e_height) + 1) << s_localEdgeNextIndex;
+            }
 			else
 			{
 				edgeCase = 7;
@@ -564,9 +557,9 @@ uint LocalEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkTable)
 //edge check specific to the chunk level
 uint ChunkEdgeChecks(uint localIndex, RWStructuredBuffer<uint3> chunkPositionTable)
 {
-	bool isTop = IsOnLeadingEdge(chunkPositionTable[localIndex].y, yChunks);
-	bool isLeft = IsOnLeadingEdge(chunkPositionTable[localIndex].x, xChunks);
-	bool isRight = IsOnLeadingEdge(chunkPositionTable[localIndex].z, zChunks);
+	bool isTop = IsOnLeadingEdge(chunkPositionTable[localIndex].y, e_yChunks);
+	bool isLeft = IsOnLeadingEdge(chunkPositionTable[localIndex].x, e_xChunks);
+	bool isRight = IsOnLeadingEdge(chunkPositionTable[localIndex].z, e_zChunks);
 	uint edgeCase;
 
 	if (isLeft)
@@ -756,7 +749,7 @@ void rayCalc(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint> te
 		
         while (IsNotLeadingFace(edgeTable, tempIndex))
 		{
-			tempIndex += stepIndex;
+			tempIndex += e_stepIndex;
 			edgeTable[tempIndex].lowIndex |= (tempTable[index] << s_localEdgeRayIndex);
 		}
 
@@ -794,18 +787,18 @@ uint3 LocalIndexToPos(uint localIndex, RWStructuredBuffer<uint3> chunkTable)
 
 uint3 LocalPosToGlobal(uint3 localPos, RWStructuredBuffer<uint3> chunkPositionTable, uint chunkIndex)
 {
-	return uint3(localPos.x + (chunkPositionTable[chunkIndex].x * length), localPos.y + (chunkPositionTable[chunkIndex].y * height), localPos.z + (chunkPositionTable[chunkIndex].z * width));
+    return uint3(localPos.x + (chunkPositionTable[chunkIndex].x * e_length), localPos.y + (chunkPositionTable[chunkIndex].y * e_height), localPos.z + (chunkPositionTable[chunkIndex].z * e_width));
 }
 
 uint GlobalPosToIndex(uint3 globalPos)
 {
-	return (globalPos.x * globalHeight * globalWidth) + (globalPos.y * globalWidth) + globalPos.z;
+    return (globalPos.x * e_globalHeight * e_globalWidth) + (globalPos.y * e_globalWidth) + globalPos.z;
 }
 
 //Returns the starting of a ray in the "inner" case
 uint InnerToStarting(uint globalIndex, uint3 globalPos)
 {
-	return globalIndex - (LimitingDim(globalPos) * globalStep);
+    return globalIndex - (LimitingDim(globalPos) * e_globalStepIndex);
 }
 
 //returns the global index of the ray starting block.
@@ -813,19 +806,19 @@ uint GlobalIndexToRayStartingIndex(uint globalIndex, uint chunkIndex, uint3 glob
 {
 	if (IsTrailingFace(chunkEdgeTable, chunkIndex))
 	{
-		if (globalIndex <= (globalHeight * globalWidth) - 1)
+        if (globalIndex <= (e_globalHeight * e_globalWidth) - 1)
 		{
 			return globalIndex;
 		}
 		else
 		{
-			if (globalIndex % globalWidth == 0)
+			if (globalIndex % e_globalWidth == 0)
 			{
 				return globalIndex;
 			}
 			else
 			{
-				if (globalIndex % (globalWidth * globalHeight) <= globalWidth - 1U)
+                if (globalIndex % (e_globalWidth * e_globalHeight) <= e_globalWidth - 1U)
 				{
 					return globalIndex;
 				}
@@ -864,16 +857,16 @@ uint YClamp(uint valueIn)
 //converts the global index position of the ray start to the ray index
 uint RayStartingIndexToRay(uint rayStartingIndex)
 {
-	uint rayStartingX = IndexToXPosition(rayStartingIndex, globalHeight, globalWidth);
-	uint rayStartingY = IndexToYPosition(rayStartingIndex, globalHeight, globalWidth);
+    uint rayStartingX = IndexToXPosition(rayStartingIndex, e_globalHeight, e_globalWidth);
+    uint rayStartingY = IndexToYPosition(rayStartingIndex, e_globalHeight, e_globalWidth);
 	if (rayStartingX == 0)
 	{
 		return rayStartingIndex;
 	}
 	else
 	{
-		return rayStartingIndex - ((rayStartingX - 1) * (globalHeight - 1) * (globalWidth - 1) + (YClamp(rayStartingY)) * (globalWidth - 1));
-	}
+        return rayStartingIndex - ((rayStartingX - 1) * (e_globalHeight - 1) * (e_globalWidth - 1) + (YClamp(rayStartingY)) * (e_globalWidth - 1));
+    }
 }
 
 //Calls the above methods perform the conversion
@@ -986,7 +979,7 @@ void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuf
 // Global Visibility Calcs
 
 //returns the greatest chunk less than or equal to the current chunkIndex position
-uint GreatestStep(uint bugIndex, uint _globalRayIndex, uint _currentYChunk, RWStructuredBuffer<uint> _globalSolidBuffer)
+uint GreatestStep(uint _globalRayIndex, uint _currentYChunk, RWStructuredBuffer<uint> _globalSolidBuffer)
 {
     
 	for (int i = _currentYChunk; i > -1; i--)
@@ -1003,17 +996,15 @@ uint GreatestStep(uint bugIndex, uint _globalRayIndex, uint _currentYChunk, RWSt
 
 
 //Return which chunk in the ray progression is visible, only one y level can be visible at a time
-void GlobalVisCalc(uint bugIndex, uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint trueCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
+void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint trueCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
 {
-    if (trueCrossHeight < (GetGlobalValue(adjustedIndex, e_heightPackedSize, e_heightSizeInBits, s_heightComparison, globalHeightTable) + (crossYChunk * height)))
+    if (trueCrossHeight < (GetGlobalValue(adjustedIndex, e_heightPackedSize, e_heightSizeInBits, s_heightComparison, globalHeightTable) + (crossYChunk * e_height)))
 	{
-		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(bugIndex, globalRayIndex, crossYChunk - 1, globalSolidBuffer));
+		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk - 1, globalSolidBuffer));
 	}
 	else
 	{
-		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(bugIndex, globalRayIndex, crossYChunk, globalSolidBuffer));
-		
-        BugBuffer[bugIndex] = GreatestStep(bugIndex, globalRayIndex, crossYChunk, globalSolidBuffer);
+		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk, globalSolidBuffer));
     }
 }
 
@@ -1053,7 +1044,7 @@ void FinalVisCalc(uint localRay, uint _globalRayIndex, uint _visInfo, uint local
         }
         while (IsNotTrailingFace(edgeTable, cascIndex))
         {
-            cascIndex -= stepIndex;
+            cascIndex -= e_stepIndex;
             if (IsSolid(cascIndex, meshProperties) && chunkTable[cascIndex].y <= localCrossHeight)
             {
                 SetVis(cascIndex, _globalRayIndex, _visInfo, hashTransferBuffer, meshProperties, counter);
@@ -1070,7 +1061,7 @@ void FinalVisCalc(uint localRay, uint _globalRayIndex, uint _visInfo, uint local
         }
         while (IsNotTrailingFace(edgeTable, cascIndex))
         {
-            cascIndex -= stepIndex;
+            cascIndex -= e_stepIndex;
             if (IsSolid(cascIndex, meshProperties))
             {
                 SetVis(cascIndex, _globalRayIndex, _visInfo, hashTransferBuffer, meshProperties, counter);
@@ -1128,7 +1119,7 @@ void InitializeHashTransferBuffer(uint3 id: SV_DispatchThreadID)
 }
 
 [numthreads(1024, 1, 1)]
-void InitializeCubes(uint3 id : SV_DispatchThreadID)
+void InitializeLocalReference(uint3 id : SV_DispatchThreadID)
 {
 	//Ensure the table is wiped
 	_EdgeTable[id.x].lowIndex = 0;
@@ -1136,17 +1127,17 @@ void InitializeCubes(uint3 id : SV_DispatchThreadID)
 	_EdgeTable[id.x].thirdIndex = 0;
 
 	//fill the reference table
-	_ChunkTable[id.x] = IndexToPosition(id.x, height, width);
+    _ChunkTable[id.x] = IndexToPosition(id.x, e_height, e_width);
 	//call the edgeCheck method
 	_EdgeTable[id.x].lowIndex = LocalEdgeChecks(id.x, _ChunkTable);
 }
 
 [numthreads(1024, 1, 1)]
-void InitializeChunks(uint3 id : SV_DispatchThreadID)
+void InitializeChunkReference(uint3 id : SV_DispatchThreadID)
 {
 	_ChunkEdgeTable[id.x] = 0;
 
-	_ChunkPositionTable[id.x] = IndexToPosition(id.x, yChunks, zChunks);
+	_ChunkPositionTable[id.x] = IndexToPosition(id.x, e_yChunks, e_zChunks);
 	_ChunkEdgeTable[id.x] = ChunkEdgeChecks(id.x, _ChunkPositionTable);
 }
 
@@ -1154,7 +1145,7 @@ void InitializeChunks(uint3 id : SV_DispatchThreadID)
 void SingleThread(uint3 id : SV_DispatchThreadID)
 {
 	uint count = 0;
-	for (uint i = 0; i < cubeCount; i++)
+	for (uint i = 0; i < e_localChunkSize; i++)
 	{
 		if (_ChunkTable[i].x == 0 || _ChunkTable[i].y == 0 || _ChunkTable[i].z == 0)
 		{
@@ -1167,7 +1158,7 @@ void SingleThread(uint3 id : SV_DispatchThreadID)
 [numthreads(1024, 1, 1)]
 void InitializeRays(uint3 id : SV_DispatchThreadID)
 {
-	rayCalc(_EdgeTable, _TempTable, id.x);
+    rayCalc(_EdgeTable, _TempTable, id.x);
 }
 
 [numthreads(1024, 1, 1)]
@@ -1193,9 +1184,9 @@ void Noise(uint3 id : SV_DispatchThreadID)
 void CheckFaces(uint3 id : SV_DispatchThreadID)
 {
 	if (_MeshProperties[id.x].lowIndex != 0 && (_MeshProperties[id.x + 1].lowIndex == 0 || _MeshProperties[id.x - 1].lowIndex == 0
-		|| _MeshProperties[id.x + width].lowIndex == 0 || _MeshProperties[id.x - width].lowIndex == 0
-		|| _MeshProperties[id.x + width * height].lowIndex == 0 || _MeshProperties[id.x - width * height].lowIndex == 0
-		|| _ChunkTable[id.x].y == 0 || _ChunkTable[id.x].y == height - 1 || _ChunkTable[id.x].z == 0 || _ChunkTable[id.x].z == width - 1))
+		|| _MeshProperties[id.x + e_width].lowIndex == 0 || _MeshProperties[id.x - e_width].lowIndex == 0
+		|| _MeshProperties[id.x + e_width * e_height].lowIndex == 0 || _MeshProperties[id.x - e_width * e_height].lowIndex == 0
+		|| _ChunkTable[id.x].y == 0 || _ChunkTable[id.x].y == e_height - 1 || _ChunkTable[id.x].z == 0 || _ChunkTable[id.x].z == e_width - 1))
 	{
 		InterlockedAdd(_Counter[0], 1);
 		_MeshProperties[id.x].lowIndex |= 1U << 12;
@@ -1233,7 +1224,7 @@ void ChunkVisibilityTable(uint3 id: SV_DispatchThreadID)
 
 //transfer the results of the local vis calcs to the global buffers
 [numthreads(1024, 1, 1)]
-void TransferGlobalHeights(uint3 id: SV_DispatchThreadID)
+void TransferToGlobal(uint3 id: SV_DispatchThreadID)
 {
 	TransferToGlobalBuffer(id.x, chunkIndex, _ChunkTable, HeightTransferBuffer, _GlobalHeightTable, _EdgeTable, _ChunkPositionTable, _ChunkEdgeTable, GlobalSolidBuffer, SolidTransferBuffer);
 }
@@ -1241,26 +1232,25 @@ void TransferGlobalHeights(uint3 id: SV_DispatchThreadID)
 [numthreads(768, 1, 1)]
 void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
 {
-	if(id.x < leadingEdgeCount)
+	if(id.x < e_leadingEdgeCount)
 	{
 		uint globalRayIndex = LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable);
-        GlobalVisCalc(id.x, globalRayIndex, GlobalRayToAdjusted(globalRayIndex, e_crossYChunk), e_crossYChunk, e_trueCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
+        GlobalVisCalc(globalRayIndex, GlobalRayToAdjusted(globalRayIndex, e_crossYChunk), e_crossYChunk, e_trueCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
     }
 }
 
 [numthreads(768, 1, 1)]
 void FinalCull(uint3 id : SV_DispatchThreadID)
 {
-	if(id.x < leadingEdgeCount)
+	if(id.x < e_leadingEdgeCount)
 	{
         uint globalRayIndex = LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable);
 		
         uint visInfo = HashLookup(HashTransferBuffer, globalRayIndex);
         if (((visInfo >> 4) & 1) == 0 && (visInfo & 15U) == currentYChunk)
         {
-            //calculateVisibility(_Counter, _MeshProperties, _EdgeTable, LocalRayToTop(id.x, _EdgeTable), true, true, 0);
-            FinalVisCalc(id.x, globalRayIndex, visInfo, e_localCrossHeight, currentYChunk, e_crossYChunk, HashTransferBuffer, _EdgeTable, _MeshProperties, _Counter,_ChunkTable);
-
+            FinalVisCalc(id.x, globalRayIndex, visInfo, e_localCrossHeight, currentYChunk, e_crossYChunk,
+			HashTransferBuffer, _EdgeTable, _MeshProperties, _Counter, _ChunkTable);
         }
     }
 }

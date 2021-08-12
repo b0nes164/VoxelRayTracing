@@ -24,9 +24,9 @@ Shader "Unlit/CustomShader"
                     StructuredBuffer<uint3> _ChunkTable;
                     StructuredBuffer<uint> _RenderProperties;
 
-                    int xChunk;
-                    int yChunk;
-                    int zChunk;
+                    extern int xChunk;
+                    extern int yChunk;
+                    extern int zChunk;
 
                     v2f vert(appdata i, uint instanceID: SV_InstanceID) {
                         v2f o;
