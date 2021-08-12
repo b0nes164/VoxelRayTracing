@@ -94,7 +94,7 @@ public class RenderingManager : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.PageDown))
         {
-            cross = Mathf.Clamp(cross -= 1, 1, 32);
+            cross = Mathf.Clamp(cross -= 1, 1, 48);
             worldGen.ReleaseRenderBuffers();
             //worldGen.HeightRendering(cross);
             worldGen.GlobalRendering(cross);
@@ -102,7 +102,7 @@ public class RenderingManager : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.PageUp))
         {
-            cross = Mathf.Clamp(cross += 1, 1, 32);
+            cross = Mathf.Clamp(cross += 1, 1, 48);
             worldGen.ReleaseRenderBuffers();
             //worldGen.HeightRendering(cross);
             worldGen.GlobalRendering(cross);

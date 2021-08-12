@@ -32,7 +32,7 @@ public class WorldGeneration
     private static int globalLeadingEdgeCount = (globalLength * globalWidth) + (globalLength * (globalHeight - 1)) + ((globalWidth - 1) * (globalHeight - 1));
     private static int globalStep = (globalWidth * globalHeight) + globalWidth + 1;
     //private static int chunkStepDepth = Mathf.Min(Mathf.Min(xChunks, yChunks), zChunks);
-    private static int chunkStepDepth = 9;
+    private static int chunkStepDepth = 3;
 
     private static int chunkSizeX = xChunks;
     private static int chunkSizeY = yChunks;
@@ -247,6 +247,8 @@ public class WorldGeneration
             computeShader.SetInt("currentYChunk", chunkPositionTable[index].y);
             computeShader.SetInt("chunkIndex", index);
 
+            ResetLocalTransferBuffers();
+
             int chunkVisTableKernel = computeShader.FindKernel("ChunkVisibilityTable");
             computeShader.SetBuffer(chunkVisTableKernel, "_MeshProperties", mainBuffers[index]);
             computeShader.SetBuffer(chunkVisTableKernel, "_ChunkTable", cubeBuffer);
@@ -276,17 +278,14 @@ public class WorldGeneration
              */
 
             /*
-             test = new uint[heightTransferBuffer.count];
+            test = new uint[heightTransferBuffer.count];
             heightTransferBuffer.GetData(test);
             foreach (uint g in test)
             {
-                Debug.Log(Convert.ToString(g, 2));
+                Debug.Log(g);
             }
-             */
-
-
-            ResetLocalTransferBuffers();
-
+            */
+            
             /*
              test = new uint[leadingEdgeCount];
             visibilityBuffers[index].GetData(test);
@@ -432,15 +431,22 @@ public class WorldGeneration
              */
         }
 
+
         /*
          test = new uint[globalHeightBuffer.count];
         globalHeightBuffer.GetData(test);
         Debug.Log(test.Length);
         for (int g = 0; g < test.Length; g++)
         {
-            Debug.Log(Convert.ToString(test[g], 2));
+            for (int i = 0; i < 8; i++)
+            {
+                Debug.Log((g >> (i * 4)) & 15U);
+            }
         }
          */
+
+
+
 
         /*
          test = new uint[globalSolidBuffer.count];
@@ -943,6 +949,7 @@ public class WorldGeneration
             Debug.Log(test[i]);
         }
          */
+
     }
 
     private void GlobalDispatch(int index, bool _recalculate)
