@@ -261,7 +261,10 @@ public class WorldGeneration
         Debug.Log(test.Length);
         for (int g = 0; g < test.Length; g++)
         {
-            Debug.Log(Convert.ToString(test[g], 2));
+            for (int i = 0; i < 32; i++)
+            {
+                Debug.Log((test[g] >> i) & 1);
+            }
         }
         */
     }
@@ -543,7 +546,7 @@ public class WorldGeneration
         globalSolidBuffer = new ComputeBuffer(Mathf.CeilToInt(globalLeadingEdgeCount * chunkStepDepth * 1f / SolidPackedSize()), sizeof(uint));
         initializeGlobalSolidsKernel = computeShader.FindKernel("InitializeGlobalSolidBuffer");
         computeShader.SetBuffer(initializeGlobalSolidsKernel, "GlobalSolidBuffer", globalSolidBuffer);
-        computeShader.Dispatch(initializeGlobalSolidsKernel, Mathf.CeilToInt(leadingEdgeCount / 1024f), 1, 1);
+        computeShader.Dispatch(initializeGlobalSolidsKernel, Mathf.CeilToInt(globalSolidBuffer.count / 1024f), 1, 1);
     }
 
     //CHANGE THIS TO ADD ALL KERNELS TO ONE INIT
