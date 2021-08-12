@@ -1354,8 +1354,9 @@ uint GreatestStep(uint globalRayIndex, uint currentYChunk, RWStructuredBuffer<ui
 
 
 //Return which chunk in the ray progression is visible, only one y level can be visible at a time
-void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint trueCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
+void GlobalVisCalc(uint bugIndex, uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint trueCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
 {
+    //BugBuffer[bugIndex] = GreatestStep(globalRayIndex, crossYChunk - 1, globalSolidBuffer);
     if (trueCrossHeight < (GetGlobalValue(adjustedIndex, e_heightPackedSize, e_heightSizeInBits, s_heightComparison, globalHeightTable) + (crossYChunk * height)))
 	{
 		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk - 1, globalSolidBuffer));
@@ -1556,7 +1557,7 @@ void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
 	if(id.x < leadingEdgeCount)
 	{
 		uint globalRayIndex = LocalRayToGlobalRay(id.x, chunkIndex, _ChunkTable, _ChunkPositionTable, _ChunkEdgeTable, _EdgeTable);
-        GlobalVisCalc(globalRayIndex, GlobalRayToAdjusted(globalRayIndex, e_crossYChunk), e_crossYChunk, e_trueCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
+        GlobalVisCalc(id.x, globalRayIndex, GlobalRayToAdjusted(globalRayIndex, e_crossYChunk), e_crossYChunk, e_trueCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
     }
 }
 

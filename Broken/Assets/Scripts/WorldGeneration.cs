@@ -916,19 +916,29 @@ public class WorldGeneration
                 computeShader.SetBuffer(shadowKern, "_GlobalHeightTable", globalHeightBuffer);
                 computeShader.SetBuffer(shadowKern, "GlobalSolidBuffer", globalSolidBuffer);
                 computeShader.SetBuffer(shadowKern, "HashTransferBuffer", hashTransferBuffer);
+                computeShader.SetBuffer(shadowKern, "BugBuffer", bugBugger);
                 computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
             }
+
+            /*
+             test = new uint[bugBugger.count];
+            bugBugger.GetData(test);
+            foreach (uint g in test)
+            {
+                Debug.Log(g);
+            }
+             */
+
         }
 
         /*
-                 test = new uint[hashTransferBuffer.count * 2];
-                hashTransferBuffer.GetData(test);
-                for (int g = 1; g < 1000; g += 2)
-                {
-                    Debug.Log(test[g]);
-                }
-                 */
-
+         test = new uint[hashTransferBuffer.count * 2];
+        hashTransferBuffer.GetData(test);
+        for (int g = 1; g < test.Length; g += 2)
+        {
+            Debug.Log(test[g]);
+        }
+         */
 
         for (int i = chunkCount; i > 0; i--)
         {
