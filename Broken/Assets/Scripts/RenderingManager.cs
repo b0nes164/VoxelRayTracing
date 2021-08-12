@@ -23,8 +23,6 @@ public class RenderingManager : MonoBehaviour
     [SerializeField]
     private GameObject prefab;
 
-    [SerializeField]
-    private bool renderMethod;
 
     [SerializeField]
     private bool render;
@@ -60,15 +58,9 @@ public class RenderingManager : MonoBehaviour
         worldGen.GenerateVisTable();
         nullChecks = worldGen.GetNullChecks();
 
-        if (renderMethod)
-        {
-            worldGen.GenerateMeshProperties();
-        }
-        else
-        {
-            //worldGen.HeightRendering(cross);
-            worldGen.GlobalRendering(cross);
-        }
+        //worldGen.HeightRendering(cross);
+        worldGen.GlobalRendering(cross);
+
 
         propertyBlocks = worldGen.GetPropertyBlocks();
         renderBuffers = worldGen.GetRenderBuffers();
