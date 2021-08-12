@@ -920,14 +920,13 @@ public class WorldGeneration
                 computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
             }
 
-            /*
-             test = new uint[bugBugger.count];
+            test = new uint[bugBugger.count];
             bugBugger.GetData(test);
             foreach (uint g in test)
             {
                 Debug.Log(g);
             }
-             */
+
 
         }
 
