@@ -13,9 +13,9 @@ public class WorldGeneration
     private ComputeShader computeShader;
     private bool chunkInfo;
 
-    private static readonly int xChunks = 5;
+    private static readonly int xChunks = 2;
     private static readonly int yChunks = 3;
-    private static readonly int zChunks = 5;
+    private static readonly int zChunks = 2;
     private static int chunkCount = xChunks * yChunks * zChunks;
 
 
@@ -222,11 +222,7 @@ public class WorldGeneration
         computeShader.SetBuffer(k_initLocTransBuff, "SolidTransferBuffer", b_solidTransfer);
         computeShader.Dispatch(k_initLocTransBuff, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
 
-
         InitHashTransferBuffer();
-
-        PopulateChunkList();
-        SortChunkList(chunkList);
     }
 
     #region GenerateWorld
@@ -349,6 +345,9 @@ public class WorldGeneration
         computeShader.SetInt("e_localCrossHeight", LocalCrossHeight(cross));
         computeShader.SetInt("e_trueCrossHeight", cross - 1);
 
+        PopulateChunkList(cross);
+        SortChunkList(chunkList);
+
         ResetHashBuffer();
 
         GlobalVisCalcs(cross);
@@ -373,6 +372,7 @@ public class WorldGeneration
         }
          */
 
+        clearChunkList();
     }
 
     private void GlobalVisCalcs(int cross)
@@ -385,7 +385,8 @@ public class WorldGeneration
         computeShader.SetBuffer(shadowKern, "GlobalSolidBuffer", b_globalSolid);
         computeShader.SetBuffer(shadowKern, "HashTransferBuffer", hashTransferBuffer);
 
-        for (int i = (chunkCount - 1); i > -1; i--)
+        /*
+         for (int i = (chunkCount - 1); i > -1; i--)
         {
             if (cross > chunkPositionTable[i].y * height)
             {
@@ -400,13 +401,19 @@ public class WorldGeneration
                 {
                     Debug.Log(g);
                 }
-                 */
+                 
             }
         }
+         */
 
-        
-
-        
+        for (int i = chunkList.Count - 1; i > -1; i--)
+        {
+            if (chunkList[i].ChunkCase == 1)
+            {
+                computeShader.SetInt("chunkIndex", chunkList[i].Index);
+                computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+            }
+        }
     }
 
     private void GlobalDispatch(int cross)
@@ -602,7 +609,7 @@ public class WorldGeneration
         computeShader.Dispatch(k_initHash, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
     }
 
-    
+
 
 
     //use this method to push all chunk indexes into the chunking list until proper chunking system is developed
@@ -616,11 +623,14 @@ public class WorldGeneration
     }
      */
 
-    private void PopulateChunkList()
+    private void PopulateChunkList(int cross)
     {
         for (int i = 0; i < chunkCount; i++)
         {
-            chunkList.Add(new ChunkStruct(i, 0));
+            if (cross > chunkPositionTable[i].y * height)
+            {
+                chunkList.Add(new ChunkStruct(i, 0));
+            }
         }
     }
 
@@ -633,68 +643,14 @@ public class WorldGeneration
     //takes the inputs from the chunking method
     private void SortChunkList(List<ChunkStruct> _chunkList)
     {
-        int lowIndex = _chunkList[0].Index;
         int highIndex = _chunkList[_chunkList.Count - 1].Index;
 
-        for (int i = 0; i < _chunkList.Count; i++)
+        for (int i = 0; i < _chunkList.Count ; i++)
         {
-            if (chunkPositionTable[_chunkList[i].Index].y == chunkPositionTable[lowIndex].y)
+            if (chunkPositionTable[_chunkList[i].Index].x == chunkPositionTable[highIndex].x || chunkPositionTable[_chunkList[i].Index].y == chunkPositionTable[highIndex].y
+                || chunkPositionTable[_chunkList[i].Index].z == chunkPositionTable[highIndex].z)
             {
-                if (chunkPositionTable[_chunkList[i].Index].z == chunkPositionTable[lowIndex].z)
-                {
-                    if (chunkPositionTable[_chunkList[i].Index].x == chunkPositionTable[lowIndex].x)
-                    {
-                        //This is the lowest index
-                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 0);
-                    }
-                    else
-                    {
-                        //bottom left
-                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 1);
-                    }
-                }
-                else
-                {
-                    if (chunkPositionTable[_chunkList[i].Index].x == chunkPositionTable[lowIndex].x)
-                    {
-                        //bottom right
-                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 2);
-                    }
-                    else
-                    {
-                        //center bottom
-                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 3);
-                    }
-                }
-            }
-            else
-            {
-                if (chunkPositionTable[_chunkList[i].Index].z == chunkPositionTable[lowIndex].z)
-                {
-                    if (chunkPositionTable[_chunkList[i].Index].x == chunkPositionTable[lowIndex].x)
-                    {
-                        //diagonal middle
-                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 4);
-                    }
-                    else
-                    {
-                        //middle left
-                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 5);
-                    }
-                }
-                else
-                {
-                    if (chunkPositionTable[_chunkList[i].Index].x == chunkPositionTable[lowIndex].x)
-                    {
-                        //middle right
-                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 6);
-                    }
-                    else
-                    {
-                        //not on the trailing face
-                        _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 7);
-                    }
-                }
+                _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 1);
             }
         }
 
