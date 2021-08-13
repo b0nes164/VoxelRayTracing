@@ -43,7 +43,7 @@ public class RenderingManager : MonoBehaviour
 
     private MaterialPropertyBlock[] propertyBlocks;
     private ComputeBuffer[] renderBuffers;
-    private ComputeBuffer interiorChunkBuffer;
+    private ComputeBuffer locPosBuffer;
     private WorldGeneration worldGen;
     private bool[] nullChecks;
 
@@ -64,8 +64,8 @@ public class RenderingManager : MonoBehaviour
 
         propertyBlocks = worldGen.GetPropertyBlocks();
         renderBuffers = worldGen.GetRenderBuffers();
-        interiorChunkBuffer = worldGen.GetInteriorChunkBuffer();
-        material.SetBuffer("_ChunkTable", interiorChunkBuffer);
+        locPosBuffer = worldGen.GetInteriorChunkBuffer();
+        material.SetBuffer("_LocalPositionBuffer", locPosBuffer);
 
         InitializeTexture();
         material.SetTexture("_MyArr", textureA);

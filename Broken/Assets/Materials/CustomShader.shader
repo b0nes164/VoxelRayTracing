@@ -21,12 +21,12 @@ Shader "Unlit/CustomShader"
                         float4 vertex : POSITION;
                     };
 
-                    StructuredBuffer<uint3> _ChunkTable;
+                    StructuredBuffer<uint3> _LocalPositionBuffer;
                     StructuredBuffer<uint> _RenderProperties;
 
-                    extern int xChunk;
-                    extern int yChunk;
-                    extern int zChunk;
+                    extern int e_xOffset;
+                    extern int e_yOffset;
+                    extern int e_zOffset;
 
                     v2f vert(appdata i, uint instanceID: SV_InstanceID) {
                         v2f o;
@@ -34,9 +34,9 @@ Shader "Unlit/CustomShader"
                         float4 pos = mul(
                             
                             float4x4
-                            (   1, 0, 0, _ChunkTable[_RenderProperties[instanceID] & 0x7FFF].x + xChunk,
-                                0, 1, 0, _ChunkTable[_RenderProperties[instanceID] & 0x7FFF].y + yChunk,
-                                0, 0, 1, _ChunkTable[_RenderProperties[instanceID] & 0x7FFF].z + zChunk,
+                            (   1, 0, 0, _LocalPositionBuffer[_RenderProperties[instanceID] & 0x7FFF].x + e_xOffset,
+                                0, 1, 0, _LocalPositionBuffer[_RenderProperties[instanceID] & 0x7FFF].y + e_yOffset,
+                                0, 0, 1, _LocalPositionBuffer[_RenderProperties[instanceID] & 0x7FFF].z + e_zOffset,
                                 0, 0, 0, 1
                             ),
                             i.vertex);
