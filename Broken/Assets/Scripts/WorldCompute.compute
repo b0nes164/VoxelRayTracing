@@ -1001,13 +1001,17 @@ uint GreatestStep(uint _globalRayIndex, uint _currentYChunk, RWStructuredBuffer<
 //Return which chunk in the ray progression is visible, only one y level can be visible at a time
 void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, uint trueCrossHeight, RWStructuredBuffer<uint> globalHeightTable, RWStructuredBuffer<uint> globalSolidBuffer, RWStructuredBuffer<KeyValue> _hashTransferBuffer)
 {
-    if (trueCrossHeight < (GetGlobalValue(adjustedIndex, e_heightPackedSize, e_heightSizeInBits, s_heightComparison, globalHeightTable) + (crossYChunk * e_height)))
-	{
-		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk - 1, globalSolidBuffer));
-	}
-	else
-	{
-		HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk, globalSolidBuffer));
+	//make sure we dont repeat calculations
+    if (HashLookup(_hashTransferBuffer, globalRayIndex) == s_empty)
+    {
+        if (trueCrossHeight < (GetGlobalValue(adjustedIndex, e_heightPackedSize, e_heightSizeInBits, s_heightComparison, globalHeightTable) + (crossYChunk * e_height)))
+        {
+            HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk - 1, globalSolidBuffer));
+        }
+        else
+        {
+            HashInsert(_hashTransferBuffer, globalRayIndex, GreatestStep(globalRayIndex, crossYChunk, globalSolidBuffer));
+        }
     }
 }
 

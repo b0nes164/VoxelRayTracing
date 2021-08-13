@@ -13,9 +13,9 @@ public class WorldGeneration
     private ComputeShader computeShader;
     private bool chunkInfo;
 
-    private static readonly int xChunks = 2;
+    private static readonly int xChunks = 6;
     private static readonly int yChunks = 3;
-    private static readonly int zChunks = 2;
+    private static readonly int zChunks = 6;
     private static int chunkCount = xChunks * yChunks * zChunks;
 
 

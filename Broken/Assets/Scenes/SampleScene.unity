@@ -353,7 +353,6 @@ MonoBehaviour:
   cameraPos: {fileID: 963194228}
   compute: {fileID: 7200000, guid: 77d26da3a7a59cf46b10c80c392c99c7, type: 3}
   prefab: {fileID: 5822745854383835123, guid: a3bb77d9d8b191648a36c6ffbabef5d4, type: 3}
-  renderMethod: 0
   render: 0
   chunkInfo: 0
   halfMesh: 0
