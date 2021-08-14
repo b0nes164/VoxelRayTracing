@@ -15,13 +15,6 @@
 #pragma kernel TransferToGlobal
 #pragma kernel GlobalShadowCalcs
 #pragma kernel FinalCull
-#pragma kernel LowVis
-#pragma kernel BottomLeftVis
-#pragma kernel BottomRightVis
-#pragma kernel CenterBottomVis
-#pragma kernel DiagonalMiddleVis
-#pragma kernel MiddleLeftVis
-#pragma kernel MiddleRightVis
 
 struct KeyValue
 {
@@ -1266,49 +1259,3 @@ void FinalCull(uint3 id : SV_DispatchThreadID)
         }
     }
 }
-
-[numthreads(768, 1, 1)]
-void LowVis(uint3 id : SV_DispatchThreadID)
-{
-	
-}
-
-[numthreads(768, 1, 1)]
-void BottomLeftVis(uint3 id : SV_DispatchThreadID)
-{
-	
-}
-
-[numthreads(768, 1, 1)]
-void BottomRightVis(uint3 id : SV_DispatchThreadID)
-{
-	
-}
-
-[numthreads(768, 1, 1)]
-void CenterBottomVis(uint3 id : SV_DispatchThreadID)
-{
-    return;
-}
-
-[numthreads(768, 1, 1)]
-void DiagonalMiddleVis(uint3 id : SV_DispatchThreadID)
-{
-   
-}
-
-[numthreads(768, 1, 1)]
-void MiddleLeftVis(uint3 id : SV_DispatchThreadID)
-{
- 
-}
-
-[numthreads(768, 1, 1)]
-void MiddleRightVis(uint3 id : SV_DispatchThreadID)
-{
-  
-}
-
-	
-
-	

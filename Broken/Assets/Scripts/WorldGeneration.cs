@@ -7,45 +7,38 @@ using Unity.Collections;
 using Unity.Mathematics;
 using System;
 
-public class WorldGeneration
+public class WorldGeneration 
 {
-    private bool render;
     private ComputeShader computeShader;
-    private bool chunkInfo;
 
-    private static readonly int xChunks = 6;
-    private static readonly int yChunks = 3;
-    private static readonly int zChunks = 6;
-    private static int chunkCount = xChunks * yChunks * zChunks;
+    private int xChunks;
+    private int yChunks;
+    private int zChunks;
 
+    private int length;
+    private int height;
+    private int width;
 
-    //Do not change these
-    private static int length = 16;
-    private static int height = 16;
-    private static int width = 16;
-
-    private static int leadingEdgeCount = (length * width) + (length * (height - 1)) + ((width - 1) * (height - 1));
-    private static int localChunkSize = length * width * height;
-    private static int stepIndex = (width * height) + width + 1;
-    private static int dispatchGroups = Mathf.CeilToInt(localChunkSize / 1024f);
-
-    private static int globalLength = xChunks * length;
-    private static int globalHeight = yChunks * height;
-    private static int globalWidth = zChunks * width;
-    private static int globalLeadingEdgeCount = (globalLength * globalWidth) + (globalLength * (globalHeight - 1)) + ((globalWidth - 1) * (globalHeight - 1));
-    private static int globalStepIndex = (globalWidth * globalHeight) + globalWidth + 1;
-    private static int chunkStepDepth = yChunks;
+    private int chunkCount;
+    private int leadingEdgeCount;
+    private int localChunkSize;
+    private int stepIndex;
+    private int dispatchGroups;
+    private int smallDispatchGroups;
+    private int globalLength;
+    private int globalHeight;
+    private int globalWidth;
+    private int globalLeadingEdgeCount;
+    private int globalStepIndex;
+    private int chunkStepDepth;
 
     //to be renamed
-    private static int chunkSizeX = xChunks;
-    private static int chunkSizeY = yChunks;
-    private static int chunkSizeZ = zChunks;
+    private int chunkSizeX;
+    private int chunkSizeY;
+    private int chunkSizeZ;
 
     private ComputeBuffer b_chunkEdge;
     private ComputeBuffer b_chunkPosition;
-    private uint[] chunkEdgeTable = new uint[chunkCount];
-    private Vector3Int[] chunkPositionTable = new Vector3Int[chunkCount];
-
     private ComputeBuffer b_locPos;
     private ComputeBuffer b_locEdge;
     private ComputeBuffer b_temp;
@@ -54,28 +47,25 @@ public class WorldGeneration
     private ComputeBuffer b_globalSolid;
     private ComputeBuffer b_solidTransfer;
     private ComputeBuffer hashTransferBuffer;
-
-    private ComputeBuffer[] mainBuffers = new ComputeBuffer[chunkCount];
-    private ComputeBuffer[] renderBuffers = new ComputeBuffer[chunkCount];
-
-
     private ComputeBuffer countBuffer;
-    private int[][] count = new int[chunkCount][];
-    private MaterialPropertyBlock[] propertyBlocks = new MaterialPropertyBlock[chunkCount];
+    private ComputeBuffer[] mainBuffers;
+    private ComputeBuffer[] renderBuffers;
 
+    private uint[] chunkEdgeTable;
+    private Vector3Int[] chunkPositionTable;
+    private MaterialPropertyBlock[] propertyBlocks;
 
+    private int[][] count;
+    private int[] xOffset;
+    private int[] yOffset;
+    private int[] zOffset;
+    private bool[] nullChecks;
+
+    //to be changed so is passed from render manager
     private List<ChunkStruct> chunkList = new List<ChunkStruct>();
-
-    private int[] xOffset = new int[chunkCount];
-    private int[] yOffset = new int[chunkCount];
-    private int[] zOffset = new int[chunkCount];
-
-    private bool[] nullChecks = new bool[chunkCount];
 
     private ComputeBuffer bugBugger;
     private uint[] test;
-
-
 
     #region kernel
     private int k_initChunkRef;
@@ -92,35 +82,78 @@ public class WorldGeneration
     private int k_clearCountBuffer;
     private int k_render;
 
-    private int lowKern;
-    private int botLeftkern;
-    private int botRightKern;
-    private int centBotKern;
-    private int diagMidKern;
-    private int midLeftKern;
-    private int midRightKern;
     private int shadowKern;
     private int finalCullKern;
     
     private int clearMeshKern;
     #endregion
 
-    //shove all kern inits into one method
-    //change the buffers so they are all only called once
     //change names in compute shader
-    //delete old methods
     //change count to a uint
     //change edge table to local edge table
 
-    public WorldGeneration(bool _render, bool _chunkInfo, ComputeShader _computeShader)
+    public WorldGeneration(ComputeShader _computeShader, int _xChunks, int _yChunks, int _zChunks, int _length, int _width, int _height)
     {
-        render = _render;
-        chunkInfo = _chunkInfo;
         computeShader = _computeShader;
-        InitializeShaderValues();
+
+        xChunks = _xChunks;
+        yChunks = _yChunks;
+        zChunks = _zChunks;
+        length = _length;
+        height = _height;
+        width = _width;
+
+        InitNonStaticVar();
+        InitShaderValues();
     }
 
-    private void InitializeShaderValues()
+    private void InitNonStaticVar()
+    {
+        chunkCount = xChunks * yChunks * zChunks;
+        leadingEdgeCount = (length * width) + (length * (height - 1)) + ((width - 1) * (height - 1));
+        localChunkSize = length * width * height;
+        stepIndex = (width * height) + width + 1;
+        dispatchGroups = Mathf.CeilToInt(localChunkSize / 1024f);
+        smallDispatchGroups = Mathf.CeilToInt(localChunkSize / 768f);
+        globalLength = xChunks * length;
+        globalHeight = yChunks * height;
+        globalWidth = zChunks * width;
+        globalLeadingEdgeCount = (globalLength * globalWidth) + (globalLength * (globalHeight - 1)) + ((globalWidth - 1) * (globalHeight - 1));
+        globalStepIndex = (globalWidth * globalHeight) + globalWidth + 1;
+        chunkStepDepth = yChunks;
+
+        chunkSizeX = xChunks;
+        chunkSizeY = yChunks;
+        chunkSizeZ = zChunks;
+
+        chunkEdgeTable = new uint[chunkCount];
+        chunkPositionTable = new Vector3Int[chunkCount];
+
+        mainBuffers = new ComputeBuffer[chunkCount];
+        renderBuffers = new ComputeBuffer[chunkCount];
+
+        propertyBlocks = new MaterialPropertyBlock[chunkCount];
+
+        count = new int[chunkCount][];
+        xOffset = new int[chunkCount];
+        yOffset = new int[chunkCount];
+        zOffset = new int[chunkCount];
+        nullChecks = new bool[chunkCount];
+
+        for (int i = 0; i < chunkCount; i++)
+        {
+            xOffset[i] = Mathf.FloorToInt(i / (yChunks * zChunks)) * length;
+            yOffset[i] = (Mathf.FloorToInt(i / (zChunks)) % yChunks) * height;
+            zOffset[i] = (i % zChunks) * width;
+
+            count[i] = new int[1];
+
+            nullChecks[i] = false;
+        }
+
+    }
+
+    private void InitShaderValues()
     {
         #region constants
         computeShader.SetInt("e_stepIndex", stepIndex);
@@ -157,32 +190,13 @@ public class WorldGeneration
         k_locVisCalc = computeShader.FindKernel("LocalVisibilityCalcs");
         k_clearCountBuffer = computeShader.FindKernel("ClearCounter");
 
-        k_render = computeShader.FindKernel("PopulateRender");
-
-        lowKern = computeShader.FindKernel("LowVis");
-        botLeftkern = computeShader.FindKernel("BottomLeftVis");
-        botRightKern = computeShader.FindKernel("BottomRightVis");
-        centBotKern = computeShader.FindKernel("CenterBottomVis");
-        diagMidKern = computeShader.FindKernel("DiagonalMiddleVis");
-        midLeftKern = computeShader.FindKernel("MiddleLeftVis");
-        midRightKern = computeShader.FindKernel("MiddleRightVis");
-        clearMeshKern = computeShader.FindKernel("ClearMeshProperties");
-
-        
         shadowKern = computeShader.FindKernel("GlobalShadowCalcs");
         finalCullKern = computeShader.FindKernel("FinalCull");
+
+        k_render = computeShader.FindKernel("PopulateRender");
+
+        clearMeshKern = computeShader.FindKernel("ClearMeshProperties");
         #endregion
-
-        for (int i = 0; i < chunkCount; i++)
-        {
-            xOffset[i] = Mathf.FloorToInt(i / (yChunks * zChunks)) * length;
-            yOffset[i] = (Mathf.FloorToInt(i / (zChunks)) % yChunks) * height;
-            zOffset[i] = (i % zChunks) * width;
-
-            count[i] = new int[1];
-
-            nullChecks[i] = false;
-        }
 
         b_chunkEdge = new ComputeBuffer(chunkCount, sizeof(uint));
         b_chunkPosition = new ComputeBuffer(chunkCount, sizeof(uint) * 3);
@@ -488,11 +502,6 @@ public class WorldGeneration
             nullChecks[index] = true;
         }
 
-        if (chunkInfo)
-        {
-            Debug.Log("Chunk: " + index + ", " + count[index][0]);
-        }
-
         propertyBlocks[index] = new MaterialPropertyBlock();
         propertyBlocks[index].SetBuffer("_RenderProperties", renderBuffers[index]);
         propertyBlocks[index].SetInt("e_xOffset", xOffset[index]);
@@ -609,9 +618,6 @@ public class WorldGeneration
         computeShader.Dispatch(k_initHash, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
     }
 
-
-
-
     //use this method to push all chunk indexes into the chunking list until proper chunking system is developed
     /*
      private void populateChunkList(int currentYChunk)
@@ -657,44 +663,7 @@ public class WorldGeneration
         
     }
 
-    private void CallVisCalc(ChunkStruct chunk)
-    {
-        switch (chunk.ChunkCase)
-        {
-            case 0:
-                //BottomLeftDispatch();
-                break;
-        }
-    }
-
-
-
-    //necessary to convert the the 2d chunking process to 3d
-    private int TwoDimIndexToThree(int twoDimHigh, int currentYChunk)
-    {
-        return (chunkPositionTable[twoDimHigh].x * yChunks * zChunks) + (currentYChunk * zChunks) + chunkPositionTable[twoDimHigh].z; 
-    }
-
-
-    [BurstCompile]
-    private struct IndexChunkJob : IJobParallelFor
-    {
-        [ReadOnly]
-        public int xValue;
-
-        [ReadOnly]
-        public int yValue;
-
-        [ReadOnly]
-
-        public NativeArray<int2> chunkListArray;
-
-        public void Execute(int index)
-        {
-        }
-    }
-
-    private struct ChunkStruct
+    public struct ChunkStruct
     {
         private int _index;
         private int _chunkCase;
@@ -714,6 +683,24 @@ public class WorldGeneration
         {
             get { return _chunkCase; }
             set { _chunkCase = value; }
+        }
+    }
+
+    [BurstCompile]
+    private struct IndexChunkJob : IJobParallelFor
+    {
+        [ReadOnly]
+        public int xValue;
+
+        [ReadOnly]
+        public int yValue;
+
+        [ReadOnly]
+
+        public NativeArray<int2> chunkListArray;
+
+        public void Execute(int index)
+        {
         }
     }
 }

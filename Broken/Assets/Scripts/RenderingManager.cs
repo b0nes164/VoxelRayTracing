@@ -6,6 +6,15 @@ using UnityEngine.UI;
 public class RenderingManager : MonoBehaviour
 {
     [SerializeField]
+    protected int xChunks;
+
+    [SerializeField]
+    protected int yChunks;
+
+    [SerializeField]
+    protected int zChunks;
+
+    [SerializeField]
     private float range;
 
     [SerializeField]
@@ -36,6 +45,12 @@ public class RenderingManager : MonoBehaviour
     [SerializeField]
     private Text text;
 
+    private readonly int length = 16;
+    private readonly int height = 16;
+    private readonly int width = 16;
+
+    private int maxHeight;
+
 
     private Texture2DArray textureA;
     private Mesh mesh;
@@ -45,20 +60,21 @@ public class RenderingManager : MonoBehaviour
     private ComputeBuffer[] renderBuffers;
     private ComputeBuffer locPosBuffer;
     private WorldGeneration worldGen;
+    private Chunking chunking;
     private bool[] nullChecks;
 
     private int cross = 48;
 
     private void Start()
     {
-        bounds = new Bounds(transform.position, Vector3.one * (range + 1));
+        InitValues();
 
-        worldGen = new WorldGeneration(render, chunkInfo, compute);
+        worldGen = new WorldGeneration(compute, xChunks, yChunks, zChunks, length, width, height);
         worldGen.GenerateWorld();
         worldGen.GenerateVisTable();
         nullChecks = worldGen.GetNullChecks();
 
-        //worldGen.HeightRendering(cross);
+        chunking = new Chunking(cameraPos);
         worldGen.GlobalRendering(cross);
 
 
@@ -86,7 +102,7 @@ public class RenderingManager : MonoBehaviour
     {
         if (Input.GetKeyDown(KeyCode.PageDown))
         {
-            cross = Mathf.Clamp(cross -= 1, 1, 48);
+            cross = Mathf.Clamp(cross -= 1, 1, maxHeight);
             worldGen.ReleaseRenderBuffers();
             //worldGen.HeightRendering(cross);
             worldGen.GlobalRendering(cross);
@@ -94,7 +110,7 @@ public class RenderingManager : MonoBehaviour
 
         if (Input.GetKeyDown(KeyCode.PageUp))
         {
-            cross = Mathf.Clamp(cross += 1, 1, 48);
+            cross = Mathf.Clamp(cross += 1, 1, maxHeight);
             worldGen.ReleaseRenderBuffers();
             //worldGen.HeightRendering(cross);
             worldGen.GlobalRendering(cross);
@@ -114,6 +130,12 @@ public class RenderingManager : MonoBehaviour
     private void OnDisable()
     {
         worldGen.ReleaseBuffers();
+    }
+
+    private void InitValues()
+    {
+        bounds = new Bounds(transform.position, Vector3.one * (range + 1));
+        maxHeight = height * yChunks;
     }
 
     private void InitializeTexture()

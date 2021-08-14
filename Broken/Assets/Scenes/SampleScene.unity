@@ -345,6 +345,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b45a79a9d3f36e9458f2b71d05cecf8d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  xChunks: 5
+  yChunks: 3
+  zChunks: 5
   range: 1000
   material: {fileID: 2100000, guid: 2c90043bdfc847e4c95b5cb10b853efc, type: 2}
   texture:
