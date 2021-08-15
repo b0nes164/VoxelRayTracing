@@ -27,22 +27,22 @@ public class CameraMovement : MonoBehaviour
         
         if (Input.GetKey(KeyCode.UpArrow))
         {
-            cam.transform.position -= new Vector3(sensitivity * Time.deltaTime, 0, sensitivity * Time.deltaTime);
+            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x - sensitivity * Time.deltaTime, 0, 80), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z - sensitivity * Time.deltaTime, 0, 80));
         }
 
         if (Input.GetKey(KeyCode.DownArrow))
         {
-            cam.transform.position += new Vector3(sensitivity * Time.deltaTime, 0, sensitivity * Time.deltaTime);
+            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x + sensitivity * Time.deltaTime, 0, 80), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z + sensitivity * Time.deltaTime, 0, 80));
         }
 
         if (Input.GetKey(KeyCode.LeftArrow))
         {
-            cam.transform.position += new Vector3(sensitivity * Time.deltaTime, 0, -sensitivity * Time.deltaTime);
+            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x + sensitivity * Time.deltaTime, 0, 80), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z - sensitivity * Time.deltaTime, 0, 80));
         }
 
         if (Input.GetKey(KeyCode.RightArrow))
         {
-            cam.transform.position += new Vector3(-sensitivity * Time.deltaTime, 0, sensitivity * Time.deltaTime);
+            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x - sensitivity * Time.deltaTime, 0, 80), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z + sensitivity * Time.deltaTime, 0, 80));
         }
 
         if (Input.GetKey(KeyCode.Keypad2))
@@ -54,18 +54,6 @@ public class CameraMovement : MonoBehaviour
         {
             cam.orthographicSize = Mathf.Clamp(cam.orthographicSize - zoomSense, .1f, 40);
         }
-
-        if (time > 1f)
-        {
-            frameRate = (int)(1f / Time.unscaledDeltaTime);
-            time = 0;
-        }
-        else
-        {
-            time += Time.deltaTime;
-        }
-
-        text.text = frameRate + ", " + cam.transform.position.x + ", " + cam.transform.position.z;
 
 
     }

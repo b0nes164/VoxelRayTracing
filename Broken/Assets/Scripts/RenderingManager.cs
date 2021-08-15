@@ -74,7 +74,7 @@ public class RenderingManager : MonoBehaviour
         worldGen.GenerateVisTable();
         nullChecks = worldGen.GetNullChecks();
 
-        chunking = new Chunking(cameraPos);
+        chunking = new Chunking(cameraPos, xChunks, yChunks, zChunks, length, width, height, 1, 1, 1);
         worldGen.GlobalRendering(cross);
 
 
@@ -100,6 +100,8 @@ public class RenderingManager : MonoBehaviour
 
     private void Update()
     {
+        chunking.IsNewChunk();
+
         if (Input.GetKeyDown(KeyCode.PageDown))
         {
             cross = Mathf.Clamp(cross -= 1, 1, maxHeight);
@@ -213,4 +215,5 @@ public class RenderingManager : MonoBehaviour
         Instantiate(prefab);
         return prefab.GetComponent<MeshFilter>().sharedMesh;
     }
+
 }
