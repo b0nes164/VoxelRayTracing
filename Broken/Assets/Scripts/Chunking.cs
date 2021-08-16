@@ -21,11 +21,13 @@ public class Chunking
     private int height;
     private int width;
 
+    private int cross;
+
     private Vector3Int cameraChunkPosition = Vector3Int.zero;
 
-    private List<Vector2Int> activeChunks;
+    private List<ChunkStruct> activeChunks;
 
-    public Chunking(Transform _camera, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width, int _activeChunkDepth, int _activeChunkLength, int _activeChunkWidth)
+    public Chunking(Transform _camera, List<ChunkStruct> _activeChunks, int cross, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width, int _activeChunkDepth, int _activeChunkLength, int _activeChunkWidth)
     {
         xChunks = _xChunks;
         yChunks = _yChunks;
@@ -40,25 +42,32 @@ public class Chunking
         activeChunkWidth = _activeChunkWidth;
 
         camera = _camera;
-        camera.position = new Vector3(0, 200, 0);
-        activeChunks = new List<Vector2Int>();
+        camera.position = new Vector3(0, cross -1, 0);
+        activeChunks = _activeChunks;
         IsNewChunk();
     }
 
     //translates the camera position from global space to chunk space
     private Vector3Int GetCameraChunkPosition(Vector3 cameraPos)
     {
-        return new Vector3Int(Mathf.FloorToInt(cameraPos.x / length), Mathf.FloorToInt(cameraPos.y / height), Mathf.FloorToInt(cameraPos.z));
+        return new Vector3Int(Mathf.FloorToInt(cameraPos.x / length), Mathf.FloorToInt(cameraPos.y / height), Mathf.FloorToInt(cameraPos.z /width));
     }
 
-    public void IsNewChunk()
+    public bool IsNewChunk()
     {
         Vector3Int newPos = GetCameraChunkPosition(camera.position);
         if (newPos != cameraChunkPosition)
         {
             cameraChunkPosition = newPos;
             UpdateActiveChunks();
+
+            return true;
         }
+        else
+        {
+            return false;
+        }
+
     }
 
     private int GetCameraChunk()
@@ -68,10 +77,10 @@ public class Chunking
 
     private void UpdateActiveChunks()
     {
-        int posActiveLength;
-        int negActiveLength;
-        int posActiveWidth;
-        int negActiveWidth;
+        int posLength;
+        int negLength;
+        int posWidth;
+        int negWidth;
 
         cameraChunk = GetCameraChunk();
 
@@ -81,49 +90,71 @@ public class Chunking
 
         if (cameraChunkPosition.x < activeChunkLength)
         {
-            negActiveLength = cameraChunkPosition.x;
-            posActiveLength = activeChunkLength;
+            negLength = cameraChunkPosition.x;
+            posLength = activeChunkLength;
         }
         else
         {
             if (cameraChunkPosition.x + activeChunkLength > xChunks)
             {
-                posActiveLength = xChunks - cameraChunkPosition.x;
-                negActiveLength = activeChunkLength;
+                posLength = xChunks - (cameraChunkPosition.x + 1);
+                negLength = activeChunkLength;
+            }
+            else
+            {
+                posLength = activeChunkLength;
+                negLength = activeChunkLength;
             }
         }
 
         if (cameraChunkPosition.z < activeChunkWidth)
         {
-            negActiveWidth = cameraChunkPosition.z;
-            posActiveWidth = activeChunkWidth;
+            negWidth = cameraChunkPosition.z;
+            posWidth = activeChunkWidth;
         }
         else
         {
             if (cameraChunkPosition.z + activeChunkWidth > zChunks)
             {
-                posActiveWidth = zChunks - cameraChunkPosition.z;
-                negActiveWidth = activeChunkWidth;
+                posWidth = zChunks - (cameraChunkPosition.z + 1);
+                negWidth = activeChunkWidth;
+            }
+            else
+            {
+                posWidth = activeChunkLength;
+                negWidth = activeChunkWidth;
             }
         }
-        
 
-        for (int y = cameraChunk - (activeChunkDepth * zChunks); y <= cameraChunk; y += zChunks)
+
+        /*
+          for (int y = cameraChunk - (activeChunkDepth * zChunks); y <= cameraChunk; y += zChunks)
         {
-            for (int x = (y - wh * activeChunkLength); x <= (y + wh * activeChunkLength); x += wh)
+            for (int x = (y - wh * negLength); x <= (y + wh * posLength); x += wh)
             {
-                for (int z = (x - activeChunkWidth); z <= (x + activeChunkWidth); z++)
+                for (int z = (x - negWidth); z <= (x + posWidth); z++)
                 {
-                    activeChunks.Add(new Vector2Int(z, 0));
+                    activeChunks.Add(new ChunkStruct(z, 0));
                 }
             }
         }
+         */
 
-        foreach (Vector2Int g in activeChunks)
+        //PopulateChunkList();
+
+        activeChunks.Add(new ChunkStruct(cameraChunk, 0));
+
+    }
+
+    private void PopulateChunkList()
+    {
+        int chunkcount = xChunks * yChunks * zChunks;
+        for (int i = 0; i < chunkcount; i++)
         {
-            Debug.Log(g.x);
+            activeChunks.Add(new ChunkStruct(i, 0));
         }
     }
 
-    
+
+
 }

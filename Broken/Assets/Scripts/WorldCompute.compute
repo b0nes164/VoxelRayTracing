@@ -1178,7 +1178,7 @@ void Noise(uint3 id : SV_DispatchThreadID)
 	}
 	else
 	{
-		_MeshProperties[id.x].lowIndex = 0;
+		_MeshProperties[id.x].lowIndex = 1;
 	}
 }
 

@@ -62,7 +62,7 @@ public class WorldGeneration
     private bool[] nullChecks;
 
     //to be changed so is passed from render manager
-    private List<ChunkStruct> chunkList = new List<ChunkStruct>();
+    private List<ChunkStruct> activeChunks;
 
     private ComputeBuffer bugBugger;
     private uint[] test;
@@ -92,9 +92,11 @@ public class WorldGeneration
     //change count to a uint
     //change edge table to local edge table
 
-    public WorldGeneration(ComputeShader _computeShader, int _xChunks, int _yChunks, int _zChunks, int _length, int _width, int _height)
+    public WorldGeneration(ComputeShader _computeShader, List<ChunkStruct> _activeChunks, int _xChunks, int _yChunks, int _zChunks, int _length, int _width, int _height)
     {
         computeShader = _computeShader;
+
+        activeChunks = _activeChunks;
 
         xChunks = _xChunks;
         yChunks = _yChunks;
@@ -359,8 +361,8 @@ public class WorldGeneration
         computeShader.SetInt("e_localCrossHeight", LocalCrossHeight(cross));
         computeShader.SetInt("e_trueCrossHeight", cross - 1);
 
-        PopulateChunkList(cross);
-        SortChunkList(chunkList);
+        //PopulateChunkList(cross);
+        SortChunkList(activeChunks);
 
         ResetHashBuffer();
 
@@ -385,8 +387,6 @@ public class WorldGeneration
             Debug.Log(test[i]);
         }
          */
-
-        clearChunkList();
     }
 
     private void GlobalVisCalcs(int cross)
@@ -420,11 +420,11 @@ public class WorldGeneration
         }
          */
 
-        for (int i = chunkList.Count - 1; i > -1; i--)
+        for (int i = activeChunks.Count - 1; i > -1; i--)
         {
-            if (chunkList[i].ChunkCase == 1)
+            if (activeChunks[i].ChunkCase == 1)
             {
-                computeShader.SetInt("chunkIndex", chunkList[i].Index);
+                computeShader.SetInt("chunkIndex", activeChunks[i].Index);
                 computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
             }
         }
@@ -618,34 +618,6 @@ public class WorldGeneration
         computeShader.Dispatch(k_initHash, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
     }
 
-    //use this method to push all chunk indexes into the chunking list until proper chunking system is developed
-    /*
-     private void populateChunkList(int currentYChunk)
-    {
-        for (int i = 0; i < xChunks * yChunks; i++)
-        {
-
-        }
-    }
-     */
-
-    private void PopulateChunkList(int cross)
-    {
-        for (int i = 0; i < chunkCount; i++)
-        {
-            if (cross > chunkPositionTable[i].y * height)
-            {
-                chunkList.Add(new ChunkStruct(i, 0));
-            }
-        }
-    }
-
-    private void clearChunkList()
-    {
-        chunkList.Clear();
-    }
-
-
     //takes the inputs from the chunking method
     private void SortChunkList(List<ChunkStruct> _chunkList)
     {
@@ -659,32 +631,8 @@ public class WorldGeneration
                 _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 1);
             }
         }
-
-        
     }
 
-    public struct ChunkStruct
-    {
-        private int _index;
-        private int _chunkCase;
-
-        public ChunkStruct(int index, int chunkCase)
-        {
-            _index = index;
-            _chunkCase = chunkCase;
-        }
-
-        public int Index 
-        {
-            get { return _index; }
-            set { _index = value; }
-        }
-        public int ChunkCase
-        {
-            get { return _chunkCase; }
-            set { _chunkCase = value; }
-        }
-    }
 
     [BurstCompile]
     private struct IndexChunkJob : IJobParallelFor
@@ -704,3 +652,4 @@ public class WorldGeneration
         }
     }
 }
+

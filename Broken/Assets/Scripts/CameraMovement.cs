@@ -3,56 +3,62 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 
-public class CameraMovement : MonoBehaviour
+public class CameraMovement 
 {
-    [SerializeField]
     private Camera cam;
 
-
-    [SerializeField]
-    private float sensitivity;
-
-    [SerializeField]
-    private float zoomSense;
-
-    [SerializeField]
     private Text text;
 
+    private float camSens;
 
-    private float frameRate;
-    private float time;
+    private float zoomSens;
 
-    void Update()
+    private int xMax;
+    private int zMax;
+
+    public CameraMovement(Camera _cam, Text _text, float _camSens, float _zoomSens, int _xChunks, int _zChunks, int _length, int _width)
+    {
+        cam = _cam;
+        text = _text;
+        camSens = _camSens;
+        zoomSens = _zoomSens;
+
+        xMax = (_xChunks * _length) - 1;
+        zMax = (_zChunks * _width) - 1;
+
+    }
+
+    public void MoveCam()
     {
         
         if (Input.GetKey(KeyCode.UpArrow))
         {
-            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x - sensitivity * Time.deltaTime, 0, 80), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z - sensitivity * Time.deltaTime, 0, 80));
+            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x - camSens * Time.deltaTime, 0, xMax), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z - camSens * Time.deltaTime, 0, zMax));
         }
 
         if (Input.GetKey(KeyCode.DownArrow))
         {
-            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x + sensitivity * Time.deltaTime, 0, 80), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z + sensitivity * Time.deltaTime, 0, 80));
+            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x + camSens * Time.deltaTime, 0, xMax), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z + camSens * Time.deltaTime, 0, zMax));
         }
 
         if (Input.GetKey(KeyCode.LeftArrow))
         {
-            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x + sensitivity * Time.deltaTime, 0, 80), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z - sensitivity * Time.deltaTime, 0, 80));
+            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x + camSens * Time.deltaTime, 0, xMax), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z - camSens * Time.deltaTime, 0, zMax));
         }
 
         if (Input.GetKey(KeyCode.RightArrow))
         {
-            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x - sensitivity * Time.deltaTime, 0, 80), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z + sensitivity * Time.deltaTime, 0, 80));
+            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x - camSens * Time.deltaTime, 0, xMax), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z + camSens * Time.deltaTime, 0, zMax));
         }
 
         if (Input.GetKey(KeyCode.Keypad2))
         {
-            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize + zoomSense, .1f, 40);
+            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize + zoomSens, .1f, 40);
         }
 
         if (Input.GetKey(KeyCode.Keypad8))
         {
-            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize - zoomSense, .1f, 40);
+            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize - zoomSens, .1f, 40);
         }
 
 

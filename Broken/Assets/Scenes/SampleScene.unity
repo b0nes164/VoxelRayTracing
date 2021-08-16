@@ -227,7 +227,6 @@ GameObject:
   - component: {fileID: 963194228}
   - component: {fileID: 963194227}
   - component: {fileID: 963194226}
-  - component: {fileID: 963194229}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -300,22 +299,6 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 36, y: 225.2, z: 0}
---- !u!114 &963194229
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 963194225}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 440f50bcb3e7a18429c5e6bcf18167c0, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  cam: {fileID: 963194227}
-  sensitivity: 50
-  zoomSense: 0.05
-  text: {fileID: 1857610603}
 --- !u!1 &1024011389
 GameObject:
   m_ObjectHideFlags: 0
@@ -345,19 +328,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b45a79a9d3f36e9458f2b71d05cecf8d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  xChunks: 5
+  xChunks: 6
   yChunks: 3
-  zChunks: 5
+  zChunks: 6
+  camSens: 50
+  zoomSens: 0.05
   range: 1000
   material: {fileID: 2100000, guid: 2c90043bdfc847e4c95b5cb10b853efc, type: 2}
   texture:
   - {fileID: 2800000, guid: 075a57bb74d5a214f837189ec2a3d8bc, type: 3}
   - {fileID: 2800000, guid: 312467cc38fd93445a268b351b9d0c6a, type: 3}
-  cameraPos: {fileID: 963194228}
+  mainCam: {fileID: 963194227}
   compute: {fileID: 7200000, guid: 77d26da3a7a59cf46b10c80c392c99c7, type: 3}
   prefab: {fileID: 5822745854383835123, guid: a3bb77d9d8b191648a36c6ffbabef5d4, type: 3}
-  render: 0
-  chunkInfo: 0
   halfMesh: 0
   text: {fileID: 1857610603}
 --- !u!4 &1024011391

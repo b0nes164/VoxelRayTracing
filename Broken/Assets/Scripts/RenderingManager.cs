@@ -6,13 +6,19 @@ using UnityEngine.UI;
 public class RenderingManager : MonoBehaviour
 {
     [SerializeField]
-    protected int xChunks;
+    private int xChunks;
 
     [SerializeField]
-    protected int yChunks;
+    private int yChunks;
 
     [SerializeField]
-    protected int zChunks;
+    private int zChunks;
+
+    [SerializeField]
+    private float camSens;
+
+    [SerializeField]
+    private float zoomSens;
 
     [SerializeField]
     private float range;
@@ -24,7 +30,7 @@ public class RenderingManager : MonoBehaviour
     private Texture[] texture;
 
     [SerializeField]
-    private Transform cameraPos;
+    private Camera mainCam;
 
     [SerializeField]
     private ComputeShader compute;
@@ -32,18 +38,16 @@ public class RenderingManager : MonoBehaviour
     [SerializeField]
     private GameObject prefab;
 
-
-    [SerializeField]
-    private bool render;
-
-    [SerializeField]
-    private bool chunkInfo;
-
     [SerializeField]
     private bool halfMesh;
 
     [SerializeField]
     private Text text;
+
+
+    private WorldGeneration worldGen;
+    private Chunking chunking;
+    private CameraMovement camMovement;
 
     private readonly int length = 16;
     private readonly int height = 16;
@@ -59,9 +63,9 @@ public class RenderingManager : MonoBehaviour
     private MaterialPropertyBlock[] propertyBlocks;
     private ComputeBuffer[] renderBuffers;
     private ComputeBuffer locPosBuffer;
-    private WorldGeneration worldGen;
-    private Chunking chunking;
+    
     private bool[] nullChecks;
+    private List<ChunkStruct> activeChunks = new List<ChunkStruct>();
 
     private int cross = 48;
 
@@ -69,14 +73,16 @@ public class RenderingManager : MonoBehaviour
     {
         InitValues();
 
-        worldGen = new WorldGeneration(compute, xChunks, yChunks, zChunks, length, width, height);
+        worldGen = new WorldGeneration(compute, activeChunks, xChunks, yChunks, zChunks, length, width, height);
         worldGen.GenerateWorld();
         worldGen.GenerateVisTable();
         nullChecks = worldGen.GetNullChecks();
 
-        chunking = new Chunking(cameraPos, xChunks, yChunks, zChunks, length, width, height, 1, 1, 1);
-        worldGen.GlobalRendering(cross);
+        chunking = new Chunking(mainCam.transform, activeChunks, cross, xChunks, yChunks, zChunks, length, width, height, 1, 1, 1);
 
+        camMovement = new CameraMovement(mainCam, text, camSens, zoomSens, xChunks, zChunks, length, width);
+
+        worldGen.GlobalRendering(cross);
 
         propertyBlocks = worldGen.GetPropertyBlocks();
         renderBuffers = worldGen.GetRenderBuffers();
@@ -100,22 +106,23 @@ public class RenderingManager : MonoBehaviour
 
     private void Update()
     {
-        chunking.IsNewChunk();
+        camMovement.MoveCam();
+
+        if (chunking.IsNewChunk())
+        {
+            HeightDispatch();
+        }
 
         if (Input.GetKeyDown(KeyCode.PageDown))
         {
             cross = Mathf.Clamp(cross -= 1, 1, maxHeight);
-            worldGen.ReleaseRenderBuffers();
-            //worldGen.HeightRendering(cross);
-            worldGen.GlobalRendering(cross);
+            HeightDispatch();
         }
 
         if (Input.GetKeyDown(KeyCode.PageUp))
         {
             cross = Mathf.Clamp(cross += 1, 1, maxHeight);
-            worldGen.ReleaseRenderBuffers();
-            //worldGen.HeightRendering(cross);
-            worldGen.GlobalRendering(cross);
+            HeightDispatch();
         }
 
         for (int i = 0; i < renderBuffers.Length; i++)
@@ -133,6 +140,13 @@ public class RenderingManager : MonoBehaviour
     {
         worldGen.ReleaseBuffers();
     }
+
+    private void HeightDispatch()
+    {
+        worldGen.ReleaseRenderBuffers();
+        worldGen.GlobalRendering(cross);
+    }
+
 
     private void InitValues()
     {
