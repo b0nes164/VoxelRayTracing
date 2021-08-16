@@ -376,6 +376,7 @@ public class WorldGeneration
             Debug.Log(test[g]);
         }
          */
+        ZeroNullChecks();
 
         GlobalDispatch(cross);
 
@@ -430,7 +431,8 @@ public class WorldGeneration
         }
     }
 
-    private void GlobalDispatch(int cross)
+    /*
+     private void GlobalDispatch(int cross)
     {
         computeShader.SetBool("topEdge", false);
         computeShader.SetBuffer(finalCullKern, "_LocalPositionBuffer", b_locPos);
@@ -458,6 +460,33 @@ public class WorldGeneration
                 countBuffer.Release();
                 GenerateRenderProperties(i);
             }
+        }
+    }
+     */
+
+    private void GlobalDispatch(int cross)
+    {
+        computeShader.SetBool("topEdge", false);
+        computeShader.SetBuffer(finalCullKern, "_LocalPositionBuffer", b_locPos);
+        computeShader.SetBuffer(finalCullKern, "_ChunkPositionTable", b_chunkPosition);
+        computeShader.SetBuffer(finalCullKern, "_ChunkEdgeTable", b_chunkEdge);
+        computeShader.SetBuffer(finalCullKern, "_LocalEdgeBuffer", b_locEdge);
+        computeShader.SetBuffer(finalCullKern, "HashTransferBuffer", hashTransferBuffer);
+
+        for (int i = activeChunks.Count - 1; i > -1; i--)
+        {
+            computeShader.SetInt("chunkIndex", activeChunks[i].Index);
+            computeShader.SetInt("currentYChunk", chunkPositionTable[activeChunks[i].Index].y);
+            ClearMeshBuffer(activeChunks[i].Index);
+            ResetCountBuffer();
+
+            computeShader.SetBuffer(finalCullKern, "_Counter", countBuffer);
+            computeShader.SetBuffer(finalCullKern, "_MeshProperties", mainBuffers[activeChunks[i].Index]);
+            computeShader.Dispatch(finalCullKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+
+            countBuffer.GetData(count[activeChunks[i].Index]);
+            countBuffer.Release();
+            GenerateRenderProperties(activeChunks[i].Index);
         }
     }
 

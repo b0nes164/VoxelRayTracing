@@ -127,8 +127,7 @@ public class Chunking
         }
 
 
-        /*
-          for (int y = cameraChunk - (activeChunkDepth * zChunks); y <= cameraChunk; y += zChunks)
+        for (int y = cameraChunk - (activeChunkDepth * zChunks); y <= cameraChunk; y += zChunks)
         {
             for (int x = (y - wh * negLength); x <= (y + wh * posLength); x += wh)
             {
@@ -138,11 +137,11 @@ public class Chunking
                 }
             }
         }
-         */
+
 
         //PopulateChunkList();
 
-        activeChunks.Add(new ChunkStruct(cameraChunk, 0));
+        //activeChunks.Add(new ChunkStruct(cameraChunk, 0));
 
     }
 
