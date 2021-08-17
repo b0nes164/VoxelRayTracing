@@ -15,7 +15,8 @@
 #pragma kernel TransferToGlobal
 #pragma kernel FullVisCalcs
 #pragma kernel TopVisCalcs
-#pragma kernel FinalCull
+#pragma kernel FullCull
+#pragma kernel TopCull
 
 struct KeyValue
 {
@@ -1042,12 +1043,11 @@ void SetVis(uint _index, uint _globalRayIndex, uint _visInfo, RWStructuredBuffer
 }
 
 
-void FinalVisCalc(uint localRay, uint _globalRayIndex, uint _visInfo, uint localCrossHeight, uint _currentYChunk, uint _crossYChunk, RWStructuredBuffer<KeyValue> hashTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<int> counter, RWStructuredBuffer<uint3> localPositionBuffer)
+void FinalVisCalc(uint cascIndex, uint _globalRayIndex, uint _visInfo, uint localCrossHeight, uint _currentYChunk, uint _crossYChunk, RWStructuredBuffer<KeyValue> hashTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<int> counter, RWStructuredBuffer<uint3> localPositionBuffer)
 {
-    uint cascIndex = LocalRayToTop(localRay, edgeTable);
+	//why? because the compiler is retarded thats why
     if (_currentYChunk == _crossYChunk)
     {
-		//why? because the compiler is retarded thats why
         if (IsSolid(cascIndex, meshProperties) && localPositionBuffer[cascIndex].y <= localCrossHeight)
         {
             SetVis(cascIndex, _globalRayIndex, _visInfo, hashTransferBuffer, meshProperties, counter);
@@ -1063,7 +1063,7 @@ void FinalVisCalc(uint localRay, uint _globalRayIndex, uint _visInfo, uint local
             }
         }
     }
-    else
+	else
     {
         if (IsSolid(cascIndex, meshProperties))
         {
@@ -1198,7 +1198,7 @@ void Noise(uint3 id : SV_DispatchThreadID)
 	}
 	else
 	{
-		_MeshProperties[id.x].lowIndex = 0;
+		_MeshProperties[id.x].lowIndex = 1;
 	}
 }
 
@@ -1274,7 +1274,7 @@ void TopVisCalcs(uint3 id: SV_DispatchThreadID)
 }
 
 [numthreads(768, 1, 1)]
-void FinalCull(uint3 id : SV_DispatchThreadID)
+void FullCull(uint3 id : SV_DispatchThreadID)
 {
 	if(id.x < e_leadingEdgeCount)
 	{
@@ -1283,8 +1283,22 @@ void FinalCull(uint3 id : SV_DispatchThreadID)
         uint visInfo = HashLookup(HashTransferBuffer, globalRayIndex);
         if (((visInfo >> 4) & 1) == 0 && (visInfo & 15U) == currentYChunk)
         {
-            FinalVisCalc(id.x, globalRayIndex, visInfo, e_localCrossHeight, currentYChunk, e_crossYChunk,
+            FinalVisCalc(LocalRayToTop(id.x, _LocalEdgeBuffer), globalRayIndex, visInfo, e_localCrossHeight, currentYChunk, e_crossYChunk,
 			HashTransferBuffer, _LocalEdgeBuffer, _MeshProperties, _Counter, _LocalPositionBuffer);
         }
+    }
+}
+
+[numthreads(256, 1, 1)]
+void TopCull(uint3 id : SV_DispatchThreadID)
+{
+    uint localIndex = TopIndexToLocalIndex(id.x, _LocalEdgeBuffer);
+    uint globalRayIndex = LocalIndexToGlobalRay(localIndex, chunkIndex, _LocalPositionBuffer, _ChunkPositionTable, _ChunkEdgeTable);
+
+    uint visInfo = HashLookup(HashTransferBuffer, globalRayIndex);
+    if (((visInfo >> 4) & 1) && (visInfo & 15U) == currentYChunk)
+    {
+        FinalVisCalc(localIndex, globalRayIndex, visInfo, e_localCrossHeight, currentYChunk, e_crossYChunk,
+		HashTransferBuffer, _LocalEdgeBuffer, _MeshProperties, _Counter, _LocalPositionBuffer);
     }
 }
