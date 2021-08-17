@@ -14,9 +14,8 @@
 #pragma kernel LocalVisibilityCalcs
 #pragma kernel TransferToGlobal
 #pragma kernel FullVisCalcs
-#pragma kernel TopVisCalcs
 #pragma kernel FullCull
-#pragma kernel TopCull
+
 
 struct KeyValue
 {
@@ -98,6 +97,8 @@ extern uint e_solidSizeInBits;
 extern uint e_xOffset;
 extern uint e_yOffset;
 extern uint e_zOffset;
+
+extern int e_activeDepth;
 
 //the y level of the current cross
 extern uint e_crossYChunk;
@@ -990,7 +991,7 @@ void TransferToGlobalBuffer(uint localRayIndex, uint chunkIndex, RWStructuredBuf
 uint GreatestStep(uint _globalRayIndex, uint _currentYChunk, RWStructuredBuffer<uint> _globalSolidBuffer)
 {
     
-	for (int i = _currentYChunk; i > -1; i--)
+    for (int i = _currentYChunk; i > e_activeDepth; i--)
 	{
         if (GetGlobalValue(GlobalRayToAdjusted(_globalRayIndex, i), e_solidPackedSize, e_solidSizeInBits, s_solidComparison, _globalSolidBuffer) == 1)
         {
@@ -1198,7 +1199,7 @@ void Noise(uint3 id : SV_DispatchThreadID)
 	}
 	else
 	{
-		_MeshProperties[id.x].lowIndex = 1;
+		_MeshProperties[id.x].lowIndex = 0;
 	}
 }
 
@@ -1265,14 +1266,6 @@ void FullVisCalcs(uint3 id : SV_DispatchThreadID)
     }
 }
 
-//calculates the visibility of only the top rays of a cube.
-[numthreads(256, 1, 1)]
-void TopVisCalcs(uint3 id: SV_DispatchThreadID)
-{
-    uint globalRayIndex = LocalIndexToGlobalRay(TopIndexToLocalIndex(id.x, _LocalEdgeBuffer), chunkIndex, _LocalPositionBuffer, _ChunkPositionTable, _ChunkEdgeTable);
-    GlobalVisCalc(globalRayIndex, GlobalRayToAdjusted(globalRayIndex, e_crossYChunk), e_crossYChunk, e_trueCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
-}
-
 [numthreads(768, 1, 1)]
 void FullCull(uint3 id : SV_DispatchThreadID)
 {
@@ -1289,16 +1282,3 @@ void FullCull(uint3 id : SV_DispatchThreadID)
     }
 }
 
-[numthreads(256, 1, 1)]
-void TopCull(uint3 id : SV_DispatchThreadID)
-{
-    uint localIndex = TopIndexToLocalIndex(id.x, _LocalEdgeBuffer);
-    uint globalRayIndex = LocalIndexToGlobalRay(localIndex, chunkIndex, _LocalPositionBuffer, _ChunkPositionTable, _ChunkEdgeTable);
-
-    uint visInfo = HashLookup(HashTransferBuffer, globalRayIndex);
-    if (((visInfo >> 4) & 1) && (visInfo & 15U) == currentYChunk)
-    {
-        FinalVisCalc(localIndex, globalRayIndex, visInfo, e_localCrossHeight, currentYChunk, e_crossYChunk,
-		HashTransferBuffer, _LocalEdgeBuffer, _MeshProperties, _Counter, _LocalPositionBuffer);
-    }
-}

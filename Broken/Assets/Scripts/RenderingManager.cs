@@ -15,6 +15,9 @@ public class RenderingManager : MonoBehaviour
     private int zChunks;
 
     [SerializeField]
+    private int activeDepth;
+
+    [SerializeField]
     private float camSens;
 
     [SerializeField]
@@ -53,9 +56,6 @@ public class RenderingManager : MonoBehaviour
     private readonly int height = 16;
     private readonly int width = 16;
 
-    private int maxHeight;
-
-
     private Texture2DArray textureA;
     private Mesh mesh;
     private Bounds bounds;
@@ -63,26 +63,26 @@ public class RenderingManager : MonoBehaviour
     private MaterialPropertyBlock[] propertyBlocks;
     private ComputeBuffer[] renderBuffers;
     private ComputeBuffer locPosBuffer;
-    
+
     private bool[] nullChecks;
     private List<ChunkStruct> activeChunks = new List<ChunkStruct>();
 
-    private int cross = 48;
+    private Cross cross = new Cross(47);
 
     private void Start()
     {
         InitValues();
 
-        worldGen = new WorldGeneration(compute, activeChunks, xChunks, yChunks, zChunks, length, width, height);
+        worldGen = new WorldGeneration(compute, activeChunks, xChunks, yChunks, zChunks, length, width, height, activeDepth);
         worldGen.GenerateWorld();
         worldGen.GenerateVisTable();
         nullChecks = worldGen.GetNullChecks();
 
-        chunking = new Chunking(mainCam.transform, activeChunks, cross, xChunks, yChunks, zChunks, length, width, height, 1, 1, 1);
+        chunking = new Chunking(mainCam.transform, activeChunks, cross, xChunks, yChunks, zChunks, length, width, height, activeDepth, 1, 1);
 
-        camMovement = new CameraMovement(mainCam, text, camSens, zoomSens, xChunks, zChunks, length, width);
+        camMovement = new CameraMovement(mainCam, text, cross, camSens, zoomSens, xChunks, yChunks, zChunks, length, height, width);
 
-        worldGen.GlobalRendering(cross);
+        HeightDispatch();
 
         propertyBlocks = worldGen.GetPropertyBlocks();
         renderBuffers = worldGen.GetRenderBuffers();
@@ -101,7 +101,7 @@ public class RenderingManager : MonoBehaviour
             mesh = GetMesh();
         }
 
-        
+
     }
 
     private void Update()
@@ -113,17 +113,6 @@ public class RenderingManager : MonoBehaviour
             HeightDispatch();
         }
 
-        if (Input.GetKeyDown(KeyCode.PageDown))
-        {
-            cross = Mathf.Clamp(cross -= 1, 1, maxHeight);
-            HeightDispatch();
-        }
-
-        if (Input.GetKeyDown(KeyCode.PageUp))
-        {
-            cross = Mathf.Clamp(cross += 1, 1, maxHeight);
-            HeightDispatch();
-        }
 
         for (int i = 0; i < renderBuffers.Length; i++)
         {
@@ -133,7 +122,7 @@ public class RenderingManager : MonoBehaviour
             }
         }
 
-        text.text = cross + "";
+        text.text = cross.Height + "";
     }
 
     private void OnDisable()
@@ -144,14 +133,13 @@ public class RenderingManager : MonoBehaviour
     private void HeightDispatch()
     {
         worldGen.ReleaseRenderBuffers();
-        worldGen.GlobalRendering(cross);
+        worldGen.GlobalRendering(cross.Height);
     }
 
 
     private void InitValues()
     {
         bounds = new Bounds(transform.position, Vector3.one * (range + 1));
-        maxHeight = height * yChunks;
     }
 
     private void InitializeTexture()
@@ -167,12 +155,12 @@ public class RenderingManager : MonoBehaviour
     private Mesh CreateHalfCube()
     {
         Mesh mesh = new Mesh();
-  
-         Vector3[] vertices = new Vector3[8]
-        {
+
+        Vector3[] vertices = new Vector3[8]
+       {
             new Vector3(1,0,1),
 
-            
+
             new Vector3(0,0,1),
             new Vector3(0,1,0),
             new Vector3(0,1,1),
@@ -180,7 +168,7 @@ public class RenderingManager : MonoBehaviour
             new Vector3(1,0,1),
             new Vector3(1,1,0),
             new Vector3(1,1,1)
-        };
+       };
 
         int[] triangles = new int[18]
         {
@@ -229,5 +217,4 @@ public class RenderingManager : MonoBehaviour
         Instantiate(prefab);
         return prefab.GetComponent<MeshFilter>().sharedMesh;
     }
-
 }

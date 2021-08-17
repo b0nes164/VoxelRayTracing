@@ -21,13 +21,14 @@ public class Chunking
     private int height;
     private int width;
 
-    private int cross;
+    private Cross cross;
+    private int lastCross;
 
     private Vector3Int cameraChunkPosition = Vector3Int.zero;
 
     private List<ChunkStruct> activeChunks;
 
-    public Chunking(Transform _camera, List<ChunkStruct> _activeChunks, int cross, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width, int _activeChunkDepth, int _activeChunkLength, int _activeChunkWidth)
+    public Chunking(Transform _camera, List<ChunkStruct> _activeChunks, Cross _cross, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width, int _activeChunkDepth, int _activeChunkLength, int _activeChunkWidth)
     {
         xChunks = _xChunks;
         yChunks = _yChunks;
@@ -37,12 +38,15 @@ public class Chunking
         height = _height;
         width = _width;
 
-        activeChunkDepth = _activeChunkDepth;
+        cross = _cross;
+        lastCross = cross.Height;
+
+        activeChunkDepth = (_activeChunkDepth - 1);
         activeChunkLength = _activeChunkLength;
         activeChunkWidth = _activeChunkWidth;
 
         camera = _camera;
-        camera.position = new Vector3(0, cross -1, 0);
+        camera.position = new Vector3(0, cross.Height + 100, 0);
         activeChunks = _activeChunks;
         IsNewChunk();
     }
@@ -50,14 +54,16 @@ public class Chunking
     //translates the camera position from global space to chunk space
     private Vector3Int GetCameraChunkPosition(Vector3 cameraPos)
     {
-        return new Vector3Int(Mathf.FloorToInt(cameraPos.x / length), Mathf.FloorToInt(cameraPos.y / height), Mathf.FloorToInt(cameraPos.z /width));
+        return new Vector3Int(Mathf.FloorToInt(cameraPos.x / length), Mathf.FloorToInt(cross.Height / height), Mathf.FloorToInt(cameraPos.z /width));
     }
 
     public bool IsNewChunk()
     {
         Vector3Int newPos = GetCameraChunkPosition(camera.position);
-        if (newPos != cameraChunkPosition)
+
+        if (newPos != cameraChunkPosition || lastCross != cross.Height)
         {
+            lastCross = cross.Height;
             cameraChunkPosition = newPos;
             UpdateActiveChunks();
 
@@ -67,7 +73,6 @@ public class Chunking
         {
             return false;
         }
-
     }
 
     private int GetCameraChunk()
@@ -137,7 +142,6 @@ public class Chunking
                 }
             }
         }
-
 
         //PopulateChunkList();
 

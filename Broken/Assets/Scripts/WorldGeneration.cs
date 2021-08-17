@@ -37,6 +37,8 @@ public class WorldGeneration
     private int chunkSizeY;
     private int chunkSizeZ;
 
+    private int activeDepth;
+
     private ComputeBuffer b_chunkEdge;
     private ComputeBuffer b_chunkPosition;
     private ComputeBuffer b_locPos;
@@ -82,9 +84,7 @@ public class WorldGeneration
     private int k_clearCountBuffer;
     private int k_render;
     private int k_fullVisCalcs;
-    private int k_topVisCalcs;
     private int k_fullCull;
-    private int k_topCull;
 
     private int clearMeshKern;
     #endregion
@@ -93,7 +93,7 @@ public class WorldGeneration
     //change count to a uint
     //change edge table to local edge table
 
-    public WorldGeneration(ComputeShader _computeShader, List<ChunkStruct> _activeChunks, int _xChunks, int _yChunks, int _zChunks, int _length, int _width, int _height)
+    public WorldGeneration(ComputeShader _computeShader, List<ChunkStruct> _activeChunks, int _xChunks, int _yChunks, int _zChunks, int _length, int _width, int _height, int _activeDepth)
     {
         computeShader = _computeShader;
 
@@ -105,6 +105,8 @@ public class WorldGeneration
         length = _length;
         height = _height;
         width = _width;
+
+        activeDepth = _activeDepth;
 
         InitNonStaticVar();
         InitShaderValues();
@@ -193,10 +195,7 @@ public class WorldGeneration
         k_locVisCalc = computeShader.FindKernel("LocalVisibilityCalcs");
         k_clearCountBuffer = computeShader.FindKernel("ClearCounter");
         k_fullVisCalcs = computeShader.FindKernel("FullVisCalcs");
-        k_topVisCalcs = computeShader.FindKernel("TopVisCalcs");
-
         k_fullCull = computeShader.FindKernel("FullCull");
-        k_topCull = computeShader.FindKernel("TopCull");
 
         k_render = computeShader.FindKernel("PopulateRender");
 
@@ -361,16 +360,27 @@ public class WorldGeneration
 
     public void GlobalRendering(int cross)
     {
-        computeShader.SetInt("e_crossYChunk", CrossYChunk(cross));
+        int crossYChunk = CrossYChunk(cross);
+        computeShader.SetInt("e_crossYChunk", crossYChunk);
         computeShader.SetInt("e_localCrossHeight", LocalCrossHeight(cross));
-        computeShader.SetInt("e_trueCrossHeight", cross - 1);
+        computeShader.SetInt("e_trueCrossHeight", cross);
+        computeShader.SetInt("e_activeDepth", crossYChunk - activeDepth);
+ 
+        if (crossYChunk <= (activeDepth -1))
+        {
+            computeShader.SetInt("e_activeDepth", -1);
+        }
+        else
+        {
+            computeShader.SetInt("e_activeDepth", crossYChunk - activeDepth);
+        }
+        
 
         SortChunkList(activeChunks);
 
         ResetHashBuffer();
 
-        //FullVisCalcs();
-        TopVisCalcs();
+        FullVisCalcs();
 
         /*
          test = new uint[hashTransferBuffer.count * 2];
@@ -383,8 +393,7 @@ public class WorldGeneration
 
         ZeroNullChecks();
 
-        //FullDispatch();
-        TopDispatch();
+        FullDispatch();
 
         /*
          test = new uint[hashTransferBuffer.count * 2];
@@ -416,27 +425,6 @@ public class WorldGeneration
         }
     }
 
-    private void TopVisCalcs()
-    {
-        computeShader.SetBuffer(k_topVisCalcs, "_LocalEdgeBuffer", b_locEdge);
-        computeShader.SetBuffer(k_topVisCalcs, "_LocalPositionBuffer", b_locPos);
-        computeShader.SetBuffer(k_topVisCalcs, "_ChunkPositionTable", b_chunkPosition);
-        computeShader.SetBuffer(k_topVisCalcs, "_ChunkEdgeTable", b_chunkEdge);
-        computeShader.SetBuffer(k_topVisCalcs, "_GlobalHeightTable", b_globalHeight);
-        computeShader.SetBuffer(k_topVisCalcs, "GlobalSolidBuffer", b_globalSolid);
-        computeShader.SetBuffer(k_topVisCalcs, "HashTransferBuffer", hashTransferBuffer);
-
-
-        for (int i = activeChunks.Count - 1; i > -1; i--)
-        {
-            if (activeChunks[i].ChunkCase == 1)
-            {
-                computeShader.SetInt("chunkIndex", activeChunks[i].Index);
-                computeShader.Dispatch(k_topVisCalcs, Mathf.CeilToInt(length * width  / 256f), 1, 1);
-            }
-        }
-    }
-
     private void FullDispatch()
     {
         computeShader.SetBool("topEdge", false);
@@ -463,40 +451,14 @@ public class WorldGeneration
         }
     }
 
-    private void TopDispatch()
-    {
-        computeShader.SetBool("topEdge", false);
-        computeShader.SetBuffer(k_topCull, "_LocalPositionBuffer", b_locPos);
-        computeShader.SetBuffer(k_topCull, "_ChunkPositionTable", b_chunkPosition);
-        computeShader.SetBuffer(k_topCull, "_ChunkEdgeTable", b_chunkEdge);
-        computeShader.SetBuffer(k_topCull, "_LocalEdgeBuffer", b_locEdge);
-        computeShader.SetBuffer(k_topCull, "HashTransferBuffer", hashTransferBuffer);
-
-        for (int i = activeChunks.Count - 1; i > -1; i--)
-        {
-            computeShader.SetInt("chunkIndex", activeChunks[i].Index);
-            computeShader.SetInt("currentYChunk", chunkPositionTable[activeChunks[i].Index].y);
-            ClearMeshBuffer(activeChunks[i].Index);
-            ResetCountBuffer();
-
-            computeShader.SetBuffer(k_topCull, "_Counter", countBuffer);
-            computeShader.SetBuffer(k_topCull, "_MeshProperties", mainBuffers[activeChunks[i].Index]);
-            computeShader.Dispatch(k_topCull, Mathf.CeilToInt(length * width / 256f), 1, 1);
-
-            countBuffer.GetData(count[activeChunks[i].Index]);
-            countBuffer.Release();
-            GenerateRenderProperties(activeChunks[i].Index);
-        }
-    }
-
     private int LocalCrossHeight(int _cross)
     {
-        return (_cross - 1) % height;
+        return _cross % height;
     }
 
     private int CrossYChunk(int _cross)
     {
-        return Mathf.FloorToInt((_cross - 1)/ height);
+        return Mathf.FloorToInt(_cross/ height);
     }
 
     private void ResetCountBuffer()

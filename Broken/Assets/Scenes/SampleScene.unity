@@ -331,6 +331,7 @@ MonoBehaviour:
   xChunks: 25
   yChunks: 3
   zChunks: 25
+  activeDepth: 2
   camSens: 50
   zoomSens: 0.05
   range: 1000
