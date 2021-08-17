@@ -81,10 +81,9 @@ public class WorldGeneration
     private int k_locVisCalc;
     private int k_clearCountBuffer;
     private int k_render;
+    private int k_fullVisCalcs;
 
-    private int shadowKern;
     private int finalCullKern;
-    
     private int clearMeshKern;
     #endregion
 
@@ -191,8 +190,8 @@ public class WorldGeneration
         k_noise = computeShader.FindKernel("Noise");
         k_locVisCalc = computeShader.FindKernel("LocalVisibilityCalcs");
         k_clearCountBuffer = computeShader.FindKernel("ClearCounter");
+        k_fullVisCalcs = computeShader.FindKernel("FullVisCalcs");
 
-        shadowKern = computeShader.FindKernel("GlobalShadowCalcs");
         finalCullKern = computeShader.FindKernel("FinalCull");
 
         k_render = computeShader.FindKernel("PopulateRender");
@@ -367,7 +366,7 @@ public class WorldGeneration
 
         ResetHashBuffer();
 
-        GlobalVisCalcs(cross);
+        GlobalVisCalcs();
 
         /*
          test = new uint[hashTransferBuffer.count * 2];
@@ -377,9 +376,10 @@ public class WorldGeneration
             Debug.Log(test[g]);
         }
          */
+
         ZeroNullChecks();
 
-        GlobalDispatch(cross);
+        GlobalDispatch();
 
         /*
          test = new uint[hashTransferBuffer.count * 2];
@@ -391,43 +391,35 @@ public class WorldGeneration
          */
     }
 
-    private void GlobalVisCalcs(int cross)
+    private void GlobalVisCalcs()
     {
-        computeShader.SetBuffer(shadowKern, "_LocalPositionBuffer", b_locPos);
-        computeShader.SetBuffer(shadowKern, "_ChunkPositionTable", b_chunkPosition);
-        computeShader.SetBuffer(shadowKern, "_ChunkEdgeTable", b_chunkEdge);
-        computeShader.SetBuffer(shadowKern, "_LocalEdgeBuffer", b_locEdge);
-        computeShader.SetBuffer(shadowKern, "_GlobalHeightTable", b_globalHeight);
-        computeShader.SetBuffer(shadowKern, "GlobalSolidBuffer", b_globalSolid);
-        computeShader.SetBuffer(shadowKern, "HashTransferBuffer", hashTransferBuffer);
-
-        /*
-         for (int i = (chunkCount - 1); i > -1; i--)
-        {
-            if (cross > chunkPositionTable[i].y * height)
-            {
-                computeShader.SetInt("chunkIndex", i);
-                computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
-
-                /*
-                 test = new uint[bugBugger.count];
-                bugBugger.GetData(test);
-
-                foreach (uint g in test)
-                {
-                    Debug.Log(g);
-                }
-                 
-            }
-        }
-         */
+        computeShader.SetBuffer(k_fullVisCalcs, "_LocalPositionBuffer", b_locPos);
+        computeShader.SetBuffer(k_fullVisCalcs, "_ChunkPositionTable", b_chunkPosition);
+        computeShader.SetBuffer(k_fullVisCalcs, "_ChunkEdgeTable", b_chunkEdge);
+        computeShader.SetBuffer(k_fullVisCalcs, "_LocalEdgeBuffer", b_locEdge);
+        computeShader.SetBuffer(k_fullVisCalcs, "_GlobalHeightTable", b_globalHeight);
+        computeShader.SetBuffer(k_fullVisCalcs, "GlobalSolidBuffer", b_globalSolid);
+        computeShader.SetBuffer(k_fullVisCalcs, "HashTransferBuffer", hashTransferBuffer);
 
         for (int i = activeChunks.Count - 1; i > -1; i--)
         {
             if (activeChunks[i].ChunkCase == 1)
             {
                 computeShader.SetInt("chunkIndex", activeChunks[i].Index);
-                computeShader.Dispatch(shadowKern, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+                computeShader.Dispatch(k_fullVisCalcs, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+            }
+        }
+    }
+
+    private void TopVisCalcs()
+    {
+
+        for (int i = activeChunks.Count - 1; i > -1; i--)
+        {
+            if (activeChunks[i].ChunkCase == 1)
+            {
+                computeShader.SetInt("chunkIndex", activeChunks[i].Index);
+                computeShader.Dispatch(k_fullVisCalcs, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
             }
         }
     }
@@ -465,7 +457,7 @@ public class WorldGeneration
     }
      */
 
-    private void GlobalDispatch(int cross)
+    private void GlobalDispatch()
     {
         computeShader.SetBool("topEdge", false);
         computeShader.SetBuffer(finalCullKern, "_LocalPositionBuffer", b_locPos);

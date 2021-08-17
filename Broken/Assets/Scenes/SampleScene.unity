@@ -328,9 +328,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b45a79a9d3f36e9458f2b71d05cecf8d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  xChunks: 6
+  xChunks: 25
   yChunks: 3
-  zChunks: 6
+  zChunks: 25
   camSens: 50
   zoomSens: 0.05
   range: 1000

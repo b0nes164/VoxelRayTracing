@@ -13,7 +13,8 @@
 #pragma kernel PopulateRender 
 #pragma kernel LocalVisibilityCalcs
 #pragma kernel TransferToGlobal
-#pragma kernel GlobalShadowCalcs
+#pragma kernel FullVisCalcs
+#pragma kernel TopVisCalcs
 #pragma kernel FinalCull
 
 struct KeyValue
@@ -1197,7 +1198,7 @@ void Noise(uint3 id : SV_DispatchThreadID)
 	}
 	else
 	{
-		_MeshProperties[id.x].lowIndex = 1;
+		_MeshProperties[id.x].lowIndex = 0;
 	}
 }
 
@@ -1255,7 +1256,7 @@ void TransferToGlobal(uint3 id: SV_DispatchThreadID)
 
 //calculates full visibility profile, top and sides, of a cube
 [numthreads(768, 1, 1)]
-void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
+void FullVisCalcs(uint3 id : SV_DispatchThreadID)
 {
 	if(id.x < e_leadingEdgeCount)
 	{
@@ -1266,7 +1267,7 @@ void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
 
 //calculates the visibility of only the top rays of a cube.
 [numthreads(256, 1, 1)]
-void TopVisCalc(uint3 id: SV_DispatchThreadID)
+void TopVisCalcs(uint3 id: SV_DispatchThreadID)
 {
     uint globalRayIndex = LocalIndexToGlobalRay(TopIndexToLocalIndex(id.x, _LocalEdgeBuffer), chunkIndex, _LocalPositionBuffer, _ChunkPositionTable, _ChunkEdgeTable);
     GlobalVisCalc(globalRayIndex, GlobalRayToAdjusted(globalRayIndex, e_crossYChunk), e_crossYChunk, e_trueCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
