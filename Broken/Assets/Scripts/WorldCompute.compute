@@ -40,7 +40,7 @@ RWStructuredBuffer<uint3> _ChunkPositionTable;
 RWStructuredBuffer<uint3> _LocalPositionBuffer;
 RWStructuredBuffer<TriIndex> _LocalEdgeBuffer;
 
-RWStructuredBuffer<uint> _TempTable;
+RWStructuredBuffer<DualIndex> _TempTable;
 
 RWStructuredBuffer<uint> _ChunkVisibilityTables;
 
@@ -734,23 +734,28 @@ bool IsNotTrailingFace(RWStructuredBuffer<TriIndex> _localEdgeBuffer, uint _loca
 // Ray Reference Table and Creation section
 
 //Creates the lookup table for the following conversions: localIndex to localRayIndex; localRayIndex to Top, Bottom 
-void rayCalc(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint> tempTable, uint index)
+void rayCalc(RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<DualIndex> tempTable, RWStructuredBuffer<uint3> localPositionBuffer, uint index)
 {
     if (IsTrailingFace(edgeTable, index))
 	{
 		uint tempIndex = index;
 
-		edgeTable[tempIndex].lowIndex |= (tempTable[index] << s_localEdgeRayIndex);
-		edgeTable[tempTable[index]].highIndex = tempIndex;
+		edgeTable[tempIndex].lowIndex |= (tempTable[index].lowIndex << s_localEdgeRayIndex);
+		edgeTable[tempTable[index].lowIndex].highIndex = tempIndex;
 		
         while (IsNotLeadingFace(edgeTable, tempIndex))
 		{
 			tempIndex += e_stepIndex;
-			edgeTable[tempIndex].lowIndex |= (tempTable[index] << s_localEdgeRayIndex);
+			edgeTable[tempIndex].lowIndex |= (tempTable[index].lowIndex << s_localEdgeRayIndex);
 		}
 
-		edgeTable[tempTable[index]].highIndex |= tempIndex << 13;
-	}
+		edgeTable[tempTable[index].lowIndex].highIndex |= tempIndex << 13;
+		
+        if(localPositionBuffer[tempIndex].y == e_height - 1)
+        {
+            edgeTable[tempTable[tempIndex].highIndex].thirdIndex = tempIndex;
+        }
+    }
 }
 
 //Returns the localIndex of the bottom of a local ray
@@ -769,6 +774,11 @@ uint LocalRayToTop(uint __localRayIndex, RWStructuredBuffer<TriIndex> __localEdg
 uint LocalIndexToLocalRay(uint __localIndex, RWStructuredBuffer<TriIndex> __localEdgeBuffer)
 {
     return __localEdgeBuffer[__localIndex].lowIndex >> s_localEdgeRayIndex;
+}
+
+uint TopIndexToLocalIndex(uint __topIndex, RWStructuredBuffer<TriIndex> __localEdgeBuffer)
+{
+    return __localEdgeBuffer[__topIndex].thirdIndex;
 }
 
 //******************************************************************************************************************************
@@ -866,13 +876,13 @@ uint RayStartingIndexToRay(uint rayStartingIndex)
 }
 
 //Calls the above methods perform the conversion
-uint LocalIndexToRayIndex(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> localPositionBuffer, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable)
+uint LocalIndexToGlobalRay(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> localPositionBuffer, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable)
 {
     return RayStartingIndexToRay(GlobalPosToRayStartingIndex(LocalPosToGlobal(LocalIndexToPos(localIndex, localPositionBuffer), chunkPositionTable, chunkIndex), chunkIndex, chunkEdgeTable));
 }
 uint LocalRayToGlobalRay(uint localRayIndex, uint chunkIndex, RWStructuredBuffer<uint3> _localPositionBuffer, RWStructuredBuffer<uint3> _chunkPositionTable, RWStructuredBuffer<uint> _chunkEdgeTable, RWStructuredBuffer<TriIndex> _localEdgeBuffer)
 {
-    return LocalIndexToRayIndex(LocalRayToBottom(localRayIndex, _localEdgeBuffer), chunkIndex, _localPositionBuffer, _chunkPositionTable, _chunkEdgeTable);
+    return LocalIndexToGlobalRay(LocalRayToBottom(localRayIndex, _localEdgeBuffer), chunkIndex, _localPositionBuffer, _chunkPositionTable, _chunkEdgeTable);
 }
 
 //******************************************************************************************************************************
@@ -891,7 +901,7 @@ uint GlobalRayToAdjusted(uint globalRayIndex, uint currentYChunk)
 
 uint LocalIndexToAdjustedIndex(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> localPositionBuffer, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable)
 {
-    return GlobalRayToAdjusted(LocalIndexToRayIndex(localIndex, chunkIndex, localPositionBuffer, chunkPositionTable, chunkEdgeTable), chunkIndex, chunkPositionTable);
+    return GlobalRayToAdjusted(LocalIndexToGlobalRay(localIndex, chunkIndex, localPositionBuffer, chunkPositionTable, chunkEdgeTable), chunkIndex, chunkPositionTable);
 }
 
 uint AdjustedToArray(uint adjustedIndex, uint packedSize)
@@ -1147,21 +1157,30 @@ void InitializeChunkReference(uint3 id : SV_DispatchThreadID)
 [numthreads(1, 1, 1)]
 void SingleThread(uint3 id : SV_DispatchThreadID)
 {
-	uint count = 0;
+	uint trailingCount = 0;
+    uint topCount = 0;
+	
 	for (uint i = 0; i < e_localChunkSize; i++)
 	{
         if (_LocalPositionBuffer[i].x == 0 || _LocalPositionBuffer[i].y == 0 || _LocalPositionBuffer[i].z == 0)
 		{
-			_TempTable[i] = count;
-			count++;
+			_TempTable[i].lowIndex = trailingCount;
+			trailingCount++;
 		}
-	}
+		
+        if (_LocalPositionBuffer[i].y == e_height - 1)
+        {
+            _TempTable[i].highIndex = topCount;
+            topCount++;
+        }
+
+    }
 }
 
 [numthreads(1024, 1, 1)]
 void InitializeRayReference(uint3 id : SV_DispatchThreadID)
 {
-    rayCalc(_LocalEdgeBuffer, _TempTable, id.x);
+    rayCalc(_LocalEdgeBuffer, _TempTable, _LocalPositionBuffer, id.x);
 }
 
 [numthreads(1024, 1, 1)]
@@ -1234,6 +1253,7 @@ void TransferToGlobal(uint3 id: SV_DispatchThreadID)
     }
 }
 
+//calculates full visibility profile, top and sides, of a cube
 [numthreads(768, 1, 1)]
 void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
 {
@@ -1242,6 +1262,14 @@ void GlobalShadowCalcs(uint3 id : SV_DispatchThreadID)
         uint globalRayIndex = LocalRayToGlobalRay(id.x, chunkIndex, _LocalPositionBuffer, _ChunkPositionTable, _ChunkEdgeTable, _LocalEdgeBuffer);
         GlobalVisCalc(globalRayIndex, GlobalRayToAdjusted(globalRayIndex, e_crossYChunk), e_crossYChunk, e_trueCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
     }
+}
+
+//calculates the visibility of only the top rays of a cube.
+[numthreads(256, 1, 1)]
+void TopVisCalc(uint3 id: SV_DispatchThreadID)
+{
+    uint globalRayIndex = LocalIndexToGlobalRay(TopIndexToLocalIndex(id.x, _LocalEdgeBuffer), chunkIndex, _LocalPositionBuffer, _ChunkPositionTable, _ChunkEdgeTable);
+    GlobalVisCalc(globalRayIndex, GlobalRayToAdjusted(globalRayIndex, e_crossYChunk), e_crossYChunk, e_trueCrossHeight, _GlobalHeightTable, GlobalSolidBuffer, HashTransferBuffer);
 }
 
 [numthreads(768, 1, 1)]

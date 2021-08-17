@@ -214,13 +214,14 @@ public class WorldGeneration
         computeShader.SetBuffer(k_initLocRef, "_LocalEdgeBuffer", b_locEdge);
         computeShader.Dispatch(k_initLocRef, dispatchGroups, 1, 1);
 
-        b_temp = new ComputeBuffer(localChunkSize, sizeof(uint));
+        b_temp = new ComputeBuffer(localChunkSize, sizeof(uint) * 2);
         computeShader.SetBuffer(k_singleThread, "_LocalPositionBuffer", b_locPos);
         computeShader.SetBuffer(k_singleThread, "_TempTable", b_temp);
         computeShader.Dispatch(k_singleThread, 1, 1, 1);
 
         computeShader.SetBuffer(k_initRayRef, "_LocalEdgeBuffer", b_locEdge);
         computeShader.SetBuffer(k_initRayRef, "_TempTable", b_temp);
+        computeShader.SetBuffer(k_initRayRef, "_LocalPositionBuffer", b_locPos);
         computeShader.Dispatch(k_initRayRef, dispatchGroups, 1, 1);
         b_temp.Release();
 

@@ -95,7 +95,7 @@ public class Chunking
         }
         else
         {
-            if (cameraChunkPosition.x + activeChunkLength > xChunks)
+            if (cameraChunkPosition.x + activeChunkLength + 1 > xChunks)
             {
                 posLength = xChunks - (cameraChunkPosition.x + 1);
                 negLength = activeChunkLength;
@@ -114,7 +114,7 @@ public class Chunking
         }
         else
         {
-            if (cameraChunkPosition.z + activeChunkWidth > zChunks)
+            if (cameraChunkPosition.z + activeChunkWidth + 1 > zChunks)
             {
                 posWidth = zChunks - (cameraChunkPosition.z + 1);
                 negWidth = activeChunkWidth;
