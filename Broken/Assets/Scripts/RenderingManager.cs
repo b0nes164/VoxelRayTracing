@@ -67,7 +67,7 @@ public class RenderingManager : MonoBehaviour
     private bool[] nullChecks;
     private List<ChunkStruct> activeChunks = new List<ChunkStruct>();
 
-    private Cross cross = new Cross(47);
+    private Cross cross = new Cross(47, 50, 50);
 
     private void Start()
     {

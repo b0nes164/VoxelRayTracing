@@ -86,6 +86,7 @@ public class Chunking
         int negLength;
         int posWidth;
         int negWidth;
+        int depth;
 
         cameraChunk = GetCameraChunk();
 
@@ -131,8 +132,17 @@ public class Chunking
             }
         }
 
+        if (cameraChunkPosition.y < activeChunkDepth)
+        {
+            depth = cameraChunkPosition.y;
+        }
+        else
+        {
+            depth = activeChunkDepth;
+        }
 
-        for (int y = cameraChunk - (activeChunkDepth * zChunks); y <= cameraChunk; y += zChunks)
+
+        for (int y = cameraChunk - (depth * zChunks); y <= cameraChunk; y += zChunks)
         {
             for (int x = (y - wh * negLength); x <= (y + wh * posLength); x += wh)
             {
