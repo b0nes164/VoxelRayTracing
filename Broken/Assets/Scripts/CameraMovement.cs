@@ -17,6 +17,9 @@ public class CameraMovement
     private int xMax;
     private int yMax;
     private int zMax;
+    private float deltaX = 32;
+    private float deltaZ = 32;
+
     private readonly int camMax = 456;
 
 
@@ -39,22 +42,35 @@ public class CameraMovement
         
         if (Input.GetKey(KeyCode.UpArrow))
         {
-            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x - camSens * Time.deltaTime, 0, xMax), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z - camSens * Time.deltaTime, 0, zMax));
+            cross.X = Mathf.Clamp(cross.X - camSens * Time.deltaTime, 0, xMax);
+            cross.Z = Mathf.Clamp(cross.Z - camSens * Time.deltaTime, 0, zMax);
+
+            cam.transform.position = new Vector3(cross.X + deltaX, cam.transform.position.y, cross.Z + deltaZ);
+
         }
 
         if (Input.GetKey(KeyCode.DownArrow))
         {
-            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x + camSens * Time.deltaTime, 0, xMax), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z + camSens * Time.deltaTime, 0, zMax));
+            cross.X = Mathf.Clamp(cross.X + camSens * Time.deltaTime, 0, xMax);
+            cross.Z = Mathf.Clamp(cross.Z + camSens * Time.deltaTime, 0, zMax);
+
+            cam.transform.position = new Vector3(cross.X + deltaX, cam.transform.position.y, cross.Z + deltaZ);
         }
 
         if (Input.GetKey(KeyCode.LeftArrow))
         {
-            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x + camSens * Time.deltaTime, 0, xMax), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z - camSens * Time.deltaTime, 0, zMax));
+            cross.X = Mathf.Clamp(cross.X + camSens * Time.deltaTime, 0, xMax);
+            cross.Z = Mathf.Clamp(cross.Z - camSens * Time.deltaTime, 0, zMax);
+
+            cam.transform.position = new Vector3(cross.X + deltaX, cam.transform.position.y, cross.Z + deltaZ);
         }
 
         if (Input.GetKey(KeyCode.RightArrow))
         {
-            cam.transform.position = new Vector3(Mathf.Clamp(cam.transform.position.x - camSens * Time.deltaTime, 0, xMax), cam.transform.position.y, Mathf.Clamp(cam.transform.position.z + camSens * Time.deltaTime, 0, zMax));
+            cross.X = Mathf.Clamp(cross.X - camSens * Time.deltaTime, 0, xMax);
+            cross.Z = Mathf.Clamp(cross.Z + camSens * Time.deltaTime, 0, zMax);
+
+            cam.transform.position = new Vector3(cross.X + deltaX, cam.transform.position.y, cross.Z + deltaZ);
         }
 
         if (Input.GetKey(KeyCode.KeypadPlus))
@@ -80,6 +96,8 @@ public class CameraMovement
         if (Input.GetKey(KeyCode.Keypad2))
         {
             cam.orthographicSize = Mathf.Clamp(cam.orthographicSize + zoomSens, .1f, 40);
+
+            Debug.Log(CalcViewMaxX());
         }
 
         if (Input.GetKey(KeyCode.Keypad8))
@@ -88,6 +106,43 @@ public class CameraMovement
         }
 
 
+    }
+
+
+    private void CalculateViewportProjectionSize()
+    {
+        Vector3 bottomLeft = cam.ViewportToWorldPoint(new Vector3(0, 0, 1));
+        Vector3 topLeft = cam.ViewportToWorldPoint(new Vector3(0, 1, 1));
+        float deltaY = topLeft.y - bottomLeft.y;
+
+        float shift = Mathf.Sin(cam.transform.localEulerAngles.y) * deltaY / Mathf.Tan(cam.transform.localEulerAngles.x);
+
+        topLeft.x += shift;
+        topLeft.y = bottomLeft.y;
+        topLeft.z += shift;
+    }
+
+
+    private float CalcViewMaxX()
+    {
+        Vector3 bottomLeft = cam.ViewportToWorldPoint(new Vector3(0, 0, 1));
+        Vector3 topLeft = cam.ViewportToWorldPoint(new Vector3(0, 1, 1));
+        float deltaY = topLeft.y - bottomLeft.y;
+
+
+        float shift = Mathf.Sin(cam.transform.eulerAngles.y * Mathf.PI / 180) * deltaY / Mathf.Tan(cam.transform.eulerAngles.x * Mathf.PI / 180);
+
+        Debug.Log((cam.ViewportToWorldPoint(new Vector3(1, 1, 1)).x + shift) - cam.ViewportToWorldPoint(new Vector3(1, 0, 1)).x);
+        return (topLeft.x + shift) - bottomLeft.x;
+    }
+
+    //for testing this should be 16/9 * maxX
+    private float CalcViewMaxZ()
+    {
+        Vector3 bottomLeft = cam.ViewportToWorldPoint(new Vector3(0, 0, 1));
+        Vector3 bottomRight = cam.ViewportToWorldPoint(new Vector3(1, 0, 1));
+
+        return 1f;
     }
 }
 

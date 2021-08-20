@@ -78,7 +78,7 @@ public class RenderingManager : MonoBehaviour
         worldGen.GenerateVisTable();
         nullChecks = worldGen.GetNullChecks();
 
-        chunking = new Chunking(mainCam.transform, activeChunks, cross, xChunks, yChunks, zChunks, length, width, height, activeDepth, 1, 1);
+        chunking = new Chunking(mainCam.transform, activeChunks, cross, xChunks, yChunks, zChunks, length, width, height, activeDepth, 7, 7);
 
         camMovement = new CameraMovement(mainCam, text, cross, camSens, zoomSens, xChunks, yChunks, zChunks, length, height, width);
 

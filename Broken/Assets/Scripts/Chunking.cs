@@ -6,8 +6,7 @@ public class Chunking
 {
     private Transform camera;
 
-    private int cameraChunk;
-    private int currentChunk;
+    private int currentChunkIndex;
 
     private int activeChunkDepth;
     private int activeChunkLength;
@@ -22,9 +21,9 @@ public class Chunking
     private int width;
 
     private Cross cross;
-    private int lastCross;
 
-    private Vector3Int cameraChunkPosition = Vector3Int.zero;
+    private Vector3Int pseudoPosition = Vector3Int.zero;
+    private Vector3Int truePosition = Vector3Int.zero;
 
     private List<ChunkStruct> activeChunks;
 
@@ -39,34 +38,29 @@ public class Chunking
         width = _width;
 
         cross = _cross;
-        lastCross = cross.Height;
 
         activeChunkDepth = (_activeChunkDepth - 1);
         activeChunkLength = _activeChunkLength;
         activeChunkWidth = _activeChunkWidth;
-
-        camera = _camera;
-        camera.position = new Vector3(0, cross.Height + 100, 0);
         activeChunks = _activeChunks;
+
         IsNewChunk();
     }
 
     //translates the camera position from global space to chunk space
-    private Vector3Int GetCameraChunkPosition(Vector3 cameraPos)
+    private Vector3Int PseudoChunkPosition()
     {
-        return new Vector3Int(Mathf.FloorToInt(cameraPos.x / length), Mathf.FloorToInt(cross.Height / height), Mathf.FloorToInt(cameraPos.z /width));
+        return new Vector3Int(Mathf.FloorToInt(cross.X / length), cross.Height,  Mathf.FloorToInt(cross.Z /width));
     }
 
     public bool IsNewChunk()
     {
-        Vector3Int newPos = GetCameraChunkPosition(camera.position);
+        Vector3Int newPseud = PseudoChunkPosition();
 
-        if (newPos != cameraChunkPosition || lastCross != cross.Height)
+        if (pseudoPosition != newPseud)
         {
-            lastCross = cross.Height;
-            cameraChunkPosition = newPos;
-            UpdateActiveChunks();
-
+            pseudoPosition = newPseud;
+            UpdateActiveChunks(pseudoPosition);
             return true;
         }
         else
@@ -75,12 +69,17 @@ public class Chunking
         }
     }
 
-    private int GetCameraChunk()
+    private Vector3Int GetTruePosition(Vector3Int _pseudoPosition)
     {
-        return cameraChunkPosition.x * zChunks * yChunks + cameraChunkPosition.y * zChunks + cameraChunkPosition.z;
+        return new Vector3Int(_pseudoPosition.x, Mathf.FloorToInt(_pseudoPosition.y * 1f / height), _pseudoPosition.z);
     }
 
-    private void UpdateActiveChunks()
+    private int GetChunkIndex(Vector3Int _truePosition)
+    {
+        return truePosition.x * zChunks * yChunks + truePosition.y * zChunks + truePosition.z;
+    }
+
+    private void UpdateActiveChunks(Vector3Int _pseudoPosition)
     {
         int posLength;
         int negLength;
@@ -88,22 +87,23 @@ public class Chunking
         int negWidth;
         int depth;
 
-        cameraChunk = GetCameraChunk();
+        truePosition = GetTruePosition(_pseudoPosition);
+        currentChunkIndex = GetChunkIndex(truePosition);
 
         int wh = zChunks * yChunks;
 
         activeChunks.Clear();
 
-        if (cameraChunkPosition.x < activeChunkLength)
+        if (truePosition.x < activeChunkLength)
         {
-            negLength = cameraChunkPosition.x;
+            negLength = truePosition.x;
             posLength = activeChunkLength;
         }
         else
         {
-            if (cameraChunkPosition.x + activeChunkLength + 1 > xChunks)
+            if (truePosition.x + activeChunkLength + 1 > xChunks)
             {
-                posLength = xChunks - (cameraChunkPosition.x + 1);
+                posLength = xChunks - (truePosition.x + 1);
                 negLength = activeChunkLength;
             }
             else
@@ -113,16 +113,16 @@ public class Chunking
             }
         }
 
-        if (cameraChunkPosition.z < activeChunkWidth)
+        if (truePosition.z < activeChunkWidth)
         {
-            negWidth = cameraChunkPosition.z;
+            negWidth = truePosition.z;
             posWidth = activeChunkWidth;
         }
         else
         {
-            if (cameraChunkPosition.z + activeChunkWidth + 1 > zChunks)
+            if (truePosition.z + activeChunkWidth + 1 > zChunks)
             {
-                posWidth = zChunks - (cameraChunkPosition.z + 1);
+                posWidth = zChunks - (truePosition.z + 1);
                 negWidth = activeChunkWidth;
             }
             else
@@ -132,9 +132,9 @@ public class Chunking
             }
         }
 
-        if (cameraChunkPosition.y < activeChunkDepth)
+        if (truePosition.y < activeChunkDepth)
         {
-            depth = cameraChunkPosition.y;
+            depth = truePosition.y;
         }
         else
         {
@@ -142,7 +142,7 @@ public class Chunking
         }
 
 
-        for (int y = cameraChunk - (depth * zChunks); y <= cameraChunk; y += zChunks)
+        for (int y = currentChunkIndex - (depth * zChunks); y <= currentChunkIndex; y += zChunks)
         {
             for (int x = (y - wh * negLength); x <= (y + wh * posLength); x += wh)
             {
