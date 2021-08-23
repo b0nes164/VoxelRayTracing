@@ -67,7 +67,7 @@ public class RenderingManager : MonoBehaviour
     private bool[] nullChecks;
     private List<ChunkStruct> activeChunks = new List<ChunkStruct>();
 
-    private Cross cross = new Cross(47, 50, 50);
+    private Cross cross = new Cross(47, 250, 250);
 
     private void Start()
     {
@@ -78,7 +78,7 @@ public class RenderingManager : MonoBehaviour
         worldGen.GenerateVisTable();
         nullChecks = worldGen.GetNullChecks();
 
-        chunking = new Chunking(mainCam.transform, activeChunks, cross, xChunks, yChunks, zChunks, length, width, height, activeDepth, 7, 7);
+        chunking = new Chunking(mainCam.transform, activeChunks, cross, xChunks, yChunks, zChunks, length, width, height, activeDepth, 5, 5);
 
         camMovement = new CameraMovement(mainCam, text, cross, camSens, zoomSens, xChunks, yChunks, zChunks, length, height, width);
 
@@ -108,7 +108,7 @@ public class RenderingManager : MonoBehaviour
     {
         camMovement.MoveCam();
 
-        if (chunking.IsNewChunk())
+        if (chunking.IsNewChunk(camMovement.GetProjDim()))
         {
             HeightDispatch();
         }

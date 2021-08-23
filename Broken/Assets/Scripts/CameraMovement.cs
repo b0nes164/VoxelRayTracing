@@ -17,16 +17,22 @@ public class CameraMovement
     private int xMax;
     private int yMax;
     private int zMax;
-    private float deltaX = 32;
-    private float deltaZ = 32;
+    private float deltaX = 48;
+    private float deltaZ = 48;
+    private float deltaY;
 
-    private readonly int camMax = 456;
+    private Vector2 projectionDimension = Vector2.zero;
+
+    private float chunkDiagonalDistance;
+    //this is fixed
+    private readonly float projectionAspectRatio;
 
 
     public CameraMovement(Camera _cam, Text _text, Cross _cross, float _camSens, float _zoomSens, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width)
     {
         cam = _cam;
         text = _text;
+        cross = _cross;
         camSens = _camSens;
         zoomSens = _zoomSens;
 
@@ -34,7 +40,20 @@ public class CameraMovement
         zMax = (_zChunks * _width) - 1;
         yMax = (_yChunks * _height) - 1;
 
-        cross = _cross;
+        
+        chunkDiagonalDistance = Mathf.Sqrt(Mathf.Pow(_length, 2) + Mathf.Pow(_width, 2));
+
+        deltaY = cam.ViewportToWorldPoint(new Vector3(0, 0, 0)).y - cross.Height;
+
+
+        cam.transform.position = new Vector3(cross.X + deltaX, cross.Height + deltaY, cross.Z + deltaZ);
+
+        float tempX = CalcViewWidth();
+        float tempY = CalcViewHeight();
+
+        projectionAspectRatio = tempX / tempY;
+
+        projectionDimension = new Vector2(tempX, tempY);
     }
 
     public void MoveCam()
@@ -73,7 +92,8 @@ public class CameraMovement
             cam.transform.position = new Vector3(cross.X + deltaX, cam.transform.position.y, cross.Z + deltaZ);
         }
 
-        if (Input.GetKey(KeyCode.KeypadPlus))
+        /*
+         if (Input.GetKey(KeyCode.KeypadPlus))
         {
             cam.transform.position = new Vector3(cam.transform.position.x, Mathf.Clamp(cam.transform.position.y + camSens * Time.deltaTime, cross.Height, camMax), cam.transform.position.z);
         }
@@ -82,30 +102,40 @@ public class CameraMovement
         {
             cam.transform.position = new Vector3(cam.transform.position.x, Mathf.Clamp(cam.transform.position.y - camSens * Time.deltaTime, cross.Height, camMax), cam.transform.position.z);
         }
+         */
+
+
+
 
         if (Input.GetKeyDown(KeyCode.PageDown))
         {
             cross.Height = Mathf.Clamp(cross.Height - 1, 0, yMax);
+
+            cam.transform.position = new Vector3(cam.transform.position.x, cross.Height + deltaY, cam.transform.position.z);
         }
 
         if (Input.GetKeyDown(KeyCode.PageUp))
         {
             cross.Height = Mathf.Clamp(cross.Height + 1, 0, yMax);
+
+            cam.transform.position = new Vector3(cam.transform.position.x, cross.Height + deltaY, cam.transform.position.z);
         }
 
         if (Input.GetKey(KeyCode.Keypad2))
         {
             cam.orthographicSize = Mathf.Clamp(cam.orthographicSize + zoomSens, .1f, 40);
 
-            Debug.Log(CalcViewMaxX());
+            float temp = CalcViewHeight();
+            projectionDimension = new Vector2(CalcViewWidth(temp), temp);
         }
 
         if (Input.GetKey(KeyCode.Keypad8))
         {
             cam.orthographicSize = Mathf.Clamp(cam.orthographicSize - zoomSens, .1f, 40);
+
+            float temp = CalcViewHeight();
+            projectionDimension = new Vector2(CalcViewWidth(temp), temp);
         }
-
-
     }
 
 
@@ -123,27 +153,46 @@ public class CameraMovement
     }
 
 
-    private float CalcViewMaxX()
+    private float CalcViewHeight()
     {
         Vector3 bottomLeft = cam.ViewportToWorldPoint(new Vector3(0, 0, 1));
         Vector3 topLeft = cam.ViewportToWorldPoint(new Vector3(0, 1, 1));
         float deltaY = topLeft.y - bottomLeft.y;
 
+        float tempFortyFive = Mathf.Sin(cam.transform.eulerAngles.y * Mathf.Deg2Rad);
 
-        float shift = Mathf.Sin(cam.transform.eulerAngles.y * Mathf.PI / 180) * deltaY / Mathf.Tan(cam.transform.eulerAngles.x * Mathf.PI / 180);
+        float shift = tempFortyFive * deltaY / Mathf.Tan(cam.transform.eulerAngles.x * Mathf.Deg2Rad);
 
-        Debug.Log((cam.ViewportToWorldPoint(new Vector3(1, 1, 1)).x + shift) - cam.ViewportToWorldPoint(new Vector3(1, 0, 1)).x);
-        return (topLeft.x + shift) - bottomLeft.x;
+        return (topLeft.x + shift - bottomLeft.x) / tempFortyFive;
     }
 
-    //for testing this should be 16/9 * maxX
-    private float CalcViewMaxZ()
+    private float CalcViewWidth()
     {
         Vector3 bottomLeft = cam.ViewportToWorldPoint(new Vector3(0, 0, 1));
         Vector3 bottomRight = cam.ViewportToWorldPoint(new Vector3(1, 0, 1));
 
-        return 1f;
+        return Distance(bottomRight.x, bottomLeft.x, bottomRight.z, bottomLeft.z);
     }
+
+
+
+    //why do math when you can cheat
+    private float CalcViewWidth(float leftSide)
+    {
+        return leftSide * projectionAspectRatio;
+    }
+
+    //why doesnt this exist already?
+    private float Distance(float xOne, float xTwo, float yOne, float yTwo)
+    {
+        return Mathf.Sqrt(Mathf.Pow(xTwo - xOne, 2) + Mathf.Pow(yTwo - yOne, 2));
+    }
+
+    public Vector2 GetProjDim()
+    {
+        return projectionDimension;
+    }
+
 }
 
 
