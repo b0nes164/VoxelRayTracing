@@ -257,6 +257,7 @@ public class WorldGeneration
 
             mainBuffers[i] = new ComputeBuffer(localChunkSize, sizeof(uint) * 2);
             computeShader.SetBuffer(k_noise, "_MeshProperties", mainBuffers[i]);
+            computeShader.SetBuffer(k_noise, "_LocalPositionBuffer", b_locPos);
             computeShader.Dispatch(k_noise, dispatchGroups, 1, 1);
         }
     }
@@ -374,9 +375,9 @@ public class WorldGeneration
         {
             computeShader.SetInt("e_activeDepth", crossYChunk - activeDepth);
         }
-        
 
-        //SortChunkList(activeChunks);
+        //NoSort(activeChunks);
+        SortChunkList(activeChunks);
 
         ResetHashBuffer();
 
@@ -515,6 +516,11 @@ public class WorldGeneration
         return ref renderBuffers;
     }
 
+    public ref Vector3Int[] GetChunkPositionTable()
+    {
+        return ref chunkPositionTable;
+    }
+
     public ref bool[] GetNullChecks()
     {
         return ref nullChecks;
@@ -621,6 +627,19 @@ public class WorldGeneration
                 _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 1);
             }
         }
+    }
+
+    private void NoSort(List<ChunkStruct> _chunkList)
+    {
+        for (int i = 0; i < _chunkList.Count; i++)
+        {
+            _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 1);
+        }
+
+        _chunkList.Sort(delegate(ChunkStruct x, ChunkStruct y)
+        {
+            return x.Index.CompareTo(y.Index);
+        });
     }
 
 

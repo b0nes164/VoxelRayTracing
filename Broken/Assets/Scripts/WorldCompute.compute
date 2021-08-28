@@ -1195,12 +1195,28 @@ void Noise(uint3 id : SV_DispatchThreadID)
     if (noise((_LocalPositionBuffer[id.x] + uint3(e_xOffset, e_yOffset, e_zOffset)) * 0.1) >= .45)
 	{
 		//this will need to be revisted later for more complex world gen
-		_MeshProperties[id.x].lowIndex = 1;
-	}
+		
+        if (_LocalPositionBuffer[id.x].y == 15)
+        {
+            _MeshProperties[id.x].lowIndex = 1;
+        }
+		else
+        {
+            _MeshProperties[id.x].lowIndex = 2;
+        }
+            
+    }
 	else
 	{
-		_MeshProperties[id.x].lowIndex = 1;
-	}
+        if (_LocalPositionBuffer[id.x].y == 15)
+        {
+            _MeshProperties[id.x].lowIndex = 1;
+        }
+        else
+        {
+            _MeshProperties[id.x].lowIndex = 2;
+        }
+    }
 }
 
 //method to check other algorithm
