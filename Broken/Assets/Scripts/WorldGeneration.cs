@@ -377,7 +377,7 @@ public class WorldGeneration
         }
 
         //NoSort(activeChunks);
-        SortChunkList(activeChunks);
+        //SortChunkList(activeChunks);
 
         ResetHashBuffer();
 

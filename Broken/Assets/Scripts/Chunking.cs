@@ -35,7 +35,7 @@ public class Chunking
 
     private List<ChunkStruct> activeChunks;
 
-    private NativeArray<int3> activeChunkNATIVE;
+    private NativeArray<int2> activeChunkNATIVE;
 
     public Chunking(Transform _camera, List<ChunkStruct> _activeChunks, Vector3Int[] _chunkPositionTable, Cross _cross, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width, int _activeChunkDepth, int _activeChunkLength, int _activeChunkWidth)
     {
@@ -91,7 +91,7 @@ public class Chunking
         if (pseudoPosition != newPseud)
         {
             pseudoPosition = newPseud;
-            ViewportDefinedChunkUpdate(pseudoPosition, _diagRight, _diagUp);
+            MultiThreadUpdate(pseudoPosition, _diagRight, _diagUp);
             return true;
         }
         else
@@ -324,10 +324,12 @@ public class Chunking
                 }
             }
         }
+
+
     }
 
 
-    private void MultiThreadUpdate()
+    private void MultiThreadUpdate(Vector3Int _pseudoPosition, Vector2Int diagRight, Vector2Int diagUp)
     {
         int posLength;
         int negLength;
@@ -338,12 +340,10 @@ public class Chunking
         truePosition = GetTruePosition(_pseudoPosition);
         currentChunkIndex = GetChunkIndex(truePosition);
 
-        Vector2Int up = new Vector2Int(truePosition.x - diagUp.x, truePosition.z - diagUp.y);
-        Vector2Int down = new Vector2Int(truePosition.x + diagUp.x, truePosition.z + diagUp.y);
-        Vector2Int right = new Vector2Int(truePosition.x - diagRight.x, truePosition.z + diagRight.y);
-        Vector2Int left = new Vector2Int(truePosition.x + diagRight.x, truePosition.z - diagRight.y);
-
-        int wh = zChunks * yChunks;
+        int2 up = new int2(truePosition.x - diagUp.x, truePosition.z - diagUp.y);
+        int2 down = new int2(truePosition.x + diagUp.x, truePosition.z + diagUp.y);
+        int2 right = new int2(truePosition.x - diagRight.x, truePosition.z + diagRight.y);
+        int2 left = new int2(truePosition.x + diagRight.x, truePosition.z - diagRight.y);
 
         activeChunks.Clear();
 
@@ -394,21 +394,136 @@ public class Chunking
             depth = activeChunkDepth;
         }
 
-        activeChunkNATIVE = new NativeArray<int3>((negLength + posLength + 1) * (negWidth + posWidth + 1) * (depth + 1), Allocator.Persistent);
+        int3 gridOffset = new int3(truePosition.x - negLength, truePosition.y - depth, truePosition.z - negWidth);
+
+        int3 maxPosition = new int3(truePosition.x + posLength, truePosition.y, truePosition.z + posWidth);
+        if (maxPosition.x > down.x)
+        {
+            maxPosition.x = down.x;
+        }
+        if (maxPosition.z > down.y)
+        {
+            maxPosition.z = down.y;
+        }
+
+        int totalLength = negLength + posLength + 1;
+        int totalWidth = negWidth + posWidth + 1;
+        int totalDepth = depth + 1;
+
+        activeChunkNATIVE = new NativeArray<int2>(totalLength * totalWidth * totalDepth, Allocator.Persistent);
+
+        ChunkJob cj = new ChunkJob()
+        {
+            _truePosition = int3.zero,
+            _gridOffset = gridOffset,
+            _maxPosition = maxPosition,
+            _totalLength = totalLength,
+            _totalWidth = totalWidth,
+            _totalDepth = totalDepth,
+            _yChunks = yChunks,
+            _zChunks = zChunks,
+            _up = up,
+            _down = down,
+            _left = left,
+            _right = right,
+            _activeChunks = activeChunkNATIVE,
+        };
 
 
 
+        JobHandle cjHandle = cj.Schedule(activeChunkNATIVE.Length, 16);
+        cjHandle.Complete();
+
+        for (int i = 0; i < activeChunkNATIVE.Length; i++)
+        {
+            if (activeChunkNATIVE[i].x != 0x7FFFFFFF)
+            {
+                activeChunks.Add(new ChunkStruct(activeChunkNATIVE[i].x, activeChunkNATIVE[i].y));
+            }
+        }
+
+        activeChunkNATIVE.Dispose();
     }
-
+    
+    /// <summary>
+    /// Creates grid of potentially active chunks then checks to see which are within the bounds of the camera. If it is not within the bounds, sets to empty sentinel
+    /// </summary>
+    [BurstCompile]
     private struct ChunkJob : IJobParallelFor
     {
         [ReadOnly]
-        public Vector3Int[] _chunkPositionTable;
+        public int3 _truePosition;
 
-        public NativeArray<int3> activeChunks;
+        [ReadOnly]
+        public int3 _gridOffset;
+
+        [ReadOnly]
+        public int3 _maxPosition;
+
+        [ReadOnly]
+        public int _totalLength;
+
+        [ReadOnly]
+        public int _totalWidth;
+
+        [ReadOnly]
+        public int _totalDepth;
+
+        /*
+        [ReadOnly]
+        public int _negLength;
+
+        [ReadOnly]
+        public int _posLength;
+
+        [ReadOnly]
+        public int _negWidth;
+
+        [ReadOnly]
+        public int _posWidth;
+        */
+
+        [ReadOnly]
+        public int _yChunks;
+
+        [ReadOnly]
+        public int _zChunks;
+
+        [ReadOnly]
+        public int2 _up;
+
+        [ReadOnly]
+        public int2 _down;
+
+        [ReadOnly]
+        public int2 _left;
+
+        [ReadOnly]
+        public int2 _right;
+
+        public NativeArray<int2> _activeChunks;
+
         public void Execute(int index)
         {
-            throw new System.NotImplementedException();
+            int3 pos = new int3(Mathf.FloorToInt(index / (_totalDepth * _totalWidth)), Mathf.FloorToInt(index / _totalWidth) % _totalDepth, index % _totalWidth);
+
+            pos += _gridOffset;
+
+            if (_up.x + _up.y <= pos.x + pos.z && pos.x + pos.z <= _down.x + _down.y && _left.y - _left.x <= pos.z - pos.x && pos.z - pos.x <= _right.y - _right.x)
+            {
+                if (pos.x == _maxPosition.x || pos.y == _maxPosition.y || pos.z == _maxPosition.z)
+                {
+                    _activeChunks[index] = new int2((pos.x * _zChunks * _yChunks) + (pos.y * _zChunks) + pos.z, 1);
+                }
+                else
+                {
+                    _activeChunks[index] = new int2((pos.x * _zChunks * _yChunks) + (pos.y * _zChunks) + pos.z, 0);
+                }
+            }
+            else
+            {
+                _activeChunks[index] = 0x7FFFFFFF;
+            }
         }
     }
 

@@ -881,7 +881,20 @@ uint RayStartingIndexToRay(uint rayStartingIndex)
 //Calls the above methods perform the conversion
 uint LocalIndexToGlobalRay(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> localPositionBuffer, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable)
 {
-    return RayStartingIndexToRay(GlobalPosToRayStartingIndex(LocalPosToGlobal(LocalIndexToPos(localIndex, localPositionBuffer), chunkPositionTable, chunkIndex), chunkIndex, chunkEdgeTable));
+    return RayStartingIndexToRay(
+		GlobalPosToRayStartingIndex(
+			LocalPosToGlobal(
+				LocalIndexToPos(
+					localIndex,
+					localPositionBuffer
+				), 
+				chunkPositionTable, 
+				chunkIndex
+			), 
+			chunkIndex, 
+			chunkEdgeTable
+		)
+	);
 }
 uint LocalRayToGlobalRay(uint localRayIndex, uint chunkIndex, RWStructuredBuffer<uint3> _localPositionBuffer, RWStructuredBuffer<uint3> _chunkPositionTable, RWStructuredBuffer<uint> _chunkEdgeTable, RWStructuredBuffer<TriIndex> _localEdgeBuffer)
 {
