@@ -66,6 +66,10 @@ public class RenderingManager : MonoBehaviour
     private ComputeBuffer[] renderBuffers;
     private ComputeBuffer locPosBuffer;
 
+
+    private List<ComputeBuffer> newRenderBuffers;
+    private List<ComputeBuffer> argsBuffers;
+
     private bool[] nullChecks;
     private List<ChunkStruct> activeChunks = new List<ChunkStruct>();
 
@@ -74,17 +78,23 @@ public class RenderingManager : MonoBehaviour
     private void Start()
     {
         InitValues();
+        camMovement = new CameraMovement(mainCam, text, cross, camSens, zoomSens, xChunks, yChunks, zChunks, length, height, width);
 
         worldGen = new WorldGeneration(compute, activeChunks, xChunks, yChunks, zChunks, length, width, height, activeDepth);
         worldGen.GenerateWorld();
         worldGen.GenerateVisTable();
+
+        
+
+        //delete this
         nullChecks = worldGen.GetNullChecks();
 
-        camMovement = new CameraMovement(mainCam, text, cross, camSens, zoomSens, xChunks, yChunks, zChunks, length, height, width);
+        
 
         chunking = new Chunking(mainCam.transform, activeChunks, worldGen.GetChunkPositionTable(), cross, xChunks, yChunks, zChunks, length, width, height, activeDepth, 6, 6);
 
-        
+        argsBuffers = worldGen.GetArgsBuffer();
+        newRenderBuffers = worldGen.GetNewRenderBuffers();
 
         HeightDispatch(ref chunking.GetActiveChunks());
 
@@ -104,8 +114,6 @@ public class RenderingManager : MonoBehaviour
         {
             mesh = GetMesh();
         }
-
-
     }
 
     private void Update()
@@ -117,13 +125,19 @@ public class RenderingManager : MonoBehaviour
             HeightDispatch(ref chunking.GetActiveChunks());
         }
 
-
+        /*
         for (int i = 0; i < renderBuffers.Length; i++)
         {
             if (nullChecks[i])
             {
                 Graphics.DrawMeshInstancedProcedural(mesh, 0, material, bounds, worldGen.GetCount(i), propertyBlocks[i]);
             }
+        }
+        */
+
+        for (int i = 0; i < newRenderBuffers.Count; i++)
+        {
+            Graphics.DrawMeshInstancedIndirect(mesh, 0, material, bounds, argsBuffers[i], 0, propertyBlocks[i]);
         }
 
         text.text = cross.Height + "";

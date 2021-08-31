@@ -460,20 +460,6 @@ public class Chunking
         [ReadOnly]
         public int _totalDepth;
 
-        /*
-        [ReadOnly]
-        public int _negLength;
-
-        [ReadOnly]
-        public int _posLength;
-
-        [ReadOnly]
-        public int _negWidth;
-
-        [ReadOnly]
-        public int _posWidth;
-        */
-
         [ReadOnly]
         public int _yChunks;
 
@@ -502,7 +488,6 @@ public class Chunking
 
             if (_up.x + _up.y <= pos.x + pos.z && pos.x + pos.z <= _down.x + _down.y && _left.y - _left.x <= pos.z - pos.x && pos.z - pos.x <= _right.y - _right.x)
             {
-                //if (pos.x == _maxPosition.x || pos.y == _maxPosition.y || pos.z == _maxPosition.z)
                 if (pos.x == _maxPosition.x || pos.y == _maxPosition.y || pos.z == _maxPosition.z)
                 {
                     _activeChunks[index] = new int2((pos.x * _zChunks * _yChunks) + (pos.y * _zChunks) + pos.z, 1);
@@ -531,118 +516,4 @@ public class Chunking
             activeChunkNATIVE.Dispose();
         }
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    //scrap
-    /*
-     private void ViewportDefinedUpdate(Vector3Int _pseudoPosition, Vector2 _projDim)
-    {
-        int depth;
-
-        activeChunks.Clear();
-
-        truePosition = GetTruePosition(_pseudoPosition);
-        currentChunkIndex = GetChunkIndex(truePosition);
-
-
-        int halfLength = Mathf.CeilToInt((_projDim.x / (22.627f * 2f)) + .5f);
-        int halfHeight = Mathf.CeilToInt((_projDim.y / (22.627f * 2f)) + .5f);
-
-        int posDiagLength;
-        int negDiagLength;
-        int posDiagHeight;
-        int negDiagHeight;
-
-        //diagright 
-        //decreasing x, increasing z
-
-        //positive diagonal right
-        if (truePosition.x < halfLength || truePosition.z + halfLength + 1 > zChunks)
-        {
-            posDiagLength = Mathf.Min(truePosition.x, zChunks - (truePosition.z + 1));
-            negDiagLength = halfLength;
-        }
-        else
-        {
-            if (truePosition.x + halfLength + 1 > xChunks || (truePosition.z - 1) < halfLength)
-            {
-                posDiagLength = halfLength;
-                negDiagLength = Mathf.Min(xChunks - (truePosition.x + 1), (truePosition.z - 1));
-            }
-            else
-            {
-                posDiagLength = halfLength;
-                negDiagLength = halfLength;
-            }
-        }
-
-        //diagup
-        //decreasing x, decreasing z
-
-        if (truePosition.x < halfHeight || (truePosition.z - 1) < halfHeight)
-        {
-            posDiagHeight = Mathf.Min(truePosition.x, (truePosition.z - 1));
-            negDiagHeight = halfHeight;
-        }
-        else
-        {
-            if (truePosition.x + halfHeight + 1 > xChunks || truePosition.z + halfHeight + 1 > zChunks)
-            {
-                posDiagHeight = halfHeight;
-                negDiagHeight = Mathf.Min(xChunks - (truePosition.x + 1), zChunks - (truePosition.z + 1));
-            }
-            else
-            {
-                posDiagHeight = halfHeight;
-                negDiagHeight = halfHeight;
-            }
-        }
-
-
-        if (truePosition.y < activeChunkDepth)
-        {
-            depth = truePosition.y;
-        }
-        else
-        {
-            depth = activeChunkDepth;
-        }
-
-        for (int y = currentChunkIndex - (depth * zChunks); y <= currentChunkIndex; y += zChunks)
-        {
-            //inline diagonal
-            for (int diagX = y - diagonalRight * posDiagLength; diagX >= y + diagonalRight * negDiagLength; diagX += diagonalRight)
-            {
-                for (int diagZ = diagX - diagonalUp * posDiagHeight; diagZ >= diagX + diagonalUp * negDiagHeight; diagZ += diagonalUp)
-                {
-                    activeChunks.Add(new ChunkStruct(diagZ - 1, 0));
-                    activeChunks.Add(new ChunkStruct(diagZ, 0));
-                }
-            }
-
-
-            for (int diagX = (y - 1) - (diagonalRight * (posDiagLength - 1)); diagX >= (y - 1) + negDiagLength * diagonalRight; diagX += diagonalRight)
-            {
-                for (int diagZ = diagX - diagonalUp * posDiagHeight; diagZ >= diagX + diagonalUp * negDiagHeight; diagZ += diagonalUp)
-                {
-                    activeChunks.Add(new ChunkStruct(diagZ, 0));
-                }
-            }
- 
-}
-    }
-     */
 }

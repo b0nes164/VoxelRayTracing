@@ -25,13 +25,21 @@ public class CameraMovement
     private Vector3 delta = Vector3.zero;
     private Vector2 projectionDimension = Vector2.zero;
 
+    private int activeSize = 0;
+    private int maximumActiveChunkSize;
+
     private Vector2Int diagUp = Vector2Int.zero;
     private Vector2Int diagRight = Vector2Int.zero;
 
-    //this is fixed
+    //this is a fixed value;
     private float projectionAspectRatio;
 
     private readonly float sqrtEight = Mathf.Sqrt(8f);
+    private readonly float sqrtOneTwoEightTimesTwo = Mathf.Sqrt(128) * 2;
+
+    private readonly float maxViewSize = 50;
+
+    private bool isUpdated = false;
 
     public CameraMovement(Camera _cam, Text _text, Cross _cross, float _camSens, float _zoomSens, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width)
     {
@@ -48,7 +56,11 @@ public class CameraMovement
         zMax = (_zChunks * _width) - 1;
         yMax = (_yChunks * _height) - 1;
 
+        cam.orthographicSize = maxViewSize;
+
         InitProjDim();
+        UpdateActiveDim(projectionDimension.x);
+        InitMaxActiveDim(activeSize);
         UpdateDiagonals();
         UpdateOffset();
 
@@ -57,13 +69,16 @@ public class CameraMovement
 
     public void MoveCam()
     {
-        
+        isUpdated = false;
+
         if (Input.GetKey(KeyCode.UpArrow))
         {
             cross.X = Mathf.Clamp(cross.X - camSens * Time.deltaTime, 0, xMax);
             cross.Z = Mathf.Clamp(cross.Z - camSens * Time.deltaTime, 0, zMax);
 
             cam.transform.position = new Vector3(cross.X + delta.x, cam.transform.position.y, cross.Z + delta.z);
+            
+            isUpdated = true;
         }
 
         if (Input.GetKey(KeyCode.DownArrow))
@@ -72,6 +87,8 @@ public class CameraMovement
             cross.Z = Mathf.Clamp(cross.Z + camSens * Time.deltaTime, 0, zMax);
 
             cam.transform.position = new Vector3(cross.X + delta.x, cam.transform.position.y, cross.Z + delta.z);
+
+            isUpdated = true;
         }
 
         if (Input.GetKey(KeyCode.LeftArrow))
@@ -80,6 +97,8 @@ public class CameraMovement
             cross.Z = Mathf.Clamp(cross.Z - camSens * Time.deltaTime, 0, zMax);
 
             cam.transform.position = new Vector3(cross.X + delta.x, cam.transform.position.y, cross.Z + delta.z);
+
+            isUpdated = true;
         }
 
         if (Input.GetKey(KeyCode.RightArrow))
@@ -88,6 +107,8 @@ public class CameraMovement
             cross.Z = Mathf.Clamp(cross.Z + camSens * Time.deltaTime, 0, zMax);
 
             cam.transform.position = new Vector3(cross.X + delta.x, cam.transform.position.y, cross.Z + delta.z);
+
+            isUpdated = true;
         }
 
         if (Input.GetKeyDown(KeyCode.PageDown))
@@ -95,6 +116,8 @@ public class CameraMovement
             cross.Height = Mathf.Clamp(cross.Height - 1, 0, yMax);
 
             cam.transform.position = new Vector3(cam.transform.position.x, cross.Height + delta.y, cam.transform.position.z);
+
+            isUpdated = true;
         }
 
         if (Input.GetKeyDown(KeyCode.PageUp))
@@ -102,28 +125,34 @@ public class CameraMovement
             cross.Height = Mathf.Clamp(cross.Height + 1, 0, yMax);
 
             cam.transform.position = new Vector3(cam.transform.position.x, cross.Height + delta.y, cam.transform.position.z);
+
+            isUpdated = true;
         }
 
         if (Input.GetKey(KeyCode.Keypad2))
         {
-            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize + zoomSens, .1f, 40);
+            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize + zoomSens, .1f, maxViewSize);
 
             UpdateProjectionDimension();
             UpdateDiagonals();
             UpdateOffset();
 
             cam.transform.position = new Vector3(cross.X + delta.x, cross.Height + delta.y, cross.Z + delta.z);
+
+            isUpdated = true;
         }
 
         if (Input.GetKey(KeyCode.Keypad8))
         {
-            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize - zoomSens, .1f, 40);
+            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize - zoomSens, .1f, maxViewSize);
 
             UpdateProjectionDimension();
             UpdateDiagonals();
             UpdateOffset();
 
             cam.transform.position = new Vector3(cross.X + delta.x, cross.Height + delta.y, cross.Z + delta.z);
+
+            isUpdated = true;
         }
     }
 
@@ -196,6 +225,26 @@ public class CameraMovement
     }
 
     /// <summary>
+    /// Calculates the minimum size of the inscribing square needed to accomodate the viewport projection
+    /// </summary>
+    /// <param name="projectionWidth"></param>
+    /// the size of the width of the projection. We take the width of the projection because its always bigger.
+    private void UpdateActiveDim(float projectionWidth)
+    {
+        activeSize = Mathf.CeilToInt((projectionWidth + 8) / sqrtOneTwoEightTimesTwo);
+    }
+
+    /// <summary>
+    /// Calculates the number of chunks in one height slice at the maxmium viewport size
+    /// </summary>
+    /// <param name="_activeSize"></param>
+    /// This SHOULD BE active size calculated when the viewport is at the maximum
+    private void InitMaxActiveDim(int _activeSize)
+    {
+        maximumActiveChunkSize = ((activeSize * 2) + 1) * ((activeSize * 2) + 1);
+    }
+
+    /// <summary>
     /// Calculates the x and z chunk position that corresponds to the world position edge of the viewport.
     /// </summary>
     private void UpdateDiagonals()
@@ -227,6 +276,11 @@ public class CameraMovement
     public Vector2 GetProjDim()
     {
         return projectionDimension;
+    }
+
+    public int GetActiveSize()
+    {
+        return activeSize;
     }
 
     public Vector2Int GetDiagUp()
