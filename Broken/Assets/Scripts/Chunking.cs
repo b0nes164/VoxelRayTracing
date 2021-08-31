@@ -331,6 +331,11 @@ public class Chunking
 
     private void MultiThreadUpdate(Vector3Int _pseudoPosition, Vector2Int diagRight, Vector2Int diagUp)
     {
+        if (activeChunkNATIVE.IsCreated)
+        {
+            activeChunkNATIVE.Dispose();
+        }
+
         int posLength;
         int negLength;
         int posWidth;
@@ -344,8 +349,6 @@ public class Chunking
         int2 down = new int2(truePosition.x + diagUp.x, truePosition.z + diagUp.y);
         int2 right = new int2(truePosition.x - diagRight.x, truePosition.z + diagRight.y);
         int2 left = new int2(truePosition.x + diagRight.x, truePosition.z - diagRight.y);
-
-        activeChunks.Clear();
 
         if (truePosition.x < activeChunkLength)
         {
@@ -429,20 +432,8 @@ public class Chunking
             _activeChunks = activeChunkNATIVE,
         };
 
-
-
         JobHandle cjHandle = cj.Schedule(activeChunkNATIVE.Length, 16);
         cjHandle.Complete();
-
-        for (int i = 0; i < activeChunkNATIVE.Length; i++)
-        {
-            if (activeChunkNATIVE[i].x != 0x7FFFFFFF)
-            {
-                activeChunks.Add(new ChunkStruct(activeChunkNATIVE[i].x, activeChunkNATIVE[i].y));
-            }
-        }
-
-        activeChunkNATIVE.Dispose();
     }
     
     /// <summary>
@@ -511,6 +502,7 @@ public class Chunking
 
             if (_up.x + _up.y <= pos.x + pos.z && pos.x + pos.z <= _down.x + _down.y && _left.y - _left.x <= pos.z - pos.x && pos.z - pos.x <= _right.y - _right.x)
             {
+                //if (pos.x == _maxPosition.x || pos.y == _maxPosition.y || pos.z == _maxPosition.z)
                 if (pos.x == _maxPosition.x || pos.y == _maxPosition.y || pos.z == _maxPosition.z)
                 {
                     _activeChunks[index] = new int2((pos.x * _zChunks * _yChunks) + (pos.y * _zChunks) + pos.z, 1);
@@ -524,6 +516,19 @@ public class Chunking
             {
                 _activeChunks[index] = 0x7FFFFFFF;
             }
+        }
+    }
+
+    public ref NativeArray<int2> GetActiveChunks()
+    {
+        return ref activeChunkNATIVE;
+    }
+
+    public void DisposeNative()
+    {
+        if (activeChunkNATIVE.IsCreated)
+        {
+            activeChunkNATIVE.Dispose();
         }
     }
 

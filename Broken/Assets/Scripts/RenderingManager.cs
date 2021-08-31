@@ -2,6 +2,8 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.Collections;
+using Unity.Mathematics;
 
 public class RenderingManager : MonoBehaviour
 {
@@ -78,11 +80,13 @@ public class RenderingManager : MonoBehaviour
         worldGen.GenerateVisTable();
         nullChecks = worldGen.GetNullChecks();
 
-        chunking = new Chunking(mainCam.transform, activeChunks, worldGen.GetChunkPositionTable(), cross, xChunks, yChunks, zChunks, length, width, height, activeDepth, 6, 6);
-
         camMovement = new CameraMovement(mainCam, text, cross, camSens, zoomSens, xChunks, yChunks, zChunks, length, height, width);
 
-        HeightDispatch();
+        chunking = new Chunking(mainCam.transform, activeChunks, worldGen.GetChunkPositionTable(), cross, xChunks, yChunks, zChunks, length, width, height, activeDepth, 6, 6);
+
+        
+
+        HeightDispatch(ref chunking.GetActiveChunks());
 
         propertyBlocks = worldGen.GetPropertyBlocks();
         renderBuffers = worldGen.GetRenderBuffers();
@@ -110,7 +114,7 @@ public class RenderingManager : MonoBehaviour
 
         if (chunking.IsNewChunk(camMovement.GetDiagRight(), camMovement.GetDiagUp()))
         {
-            HeightDispatch();
+            HeightDispatch(ref chunking.GetActiveChunks());
         }
 
 
@@ -118,7 +122,7 @@ public class RenderingManager : MonoBehaviour
         {
             if (nullChecks[i])
             {
-                Graphics.DrawMeshInstancedProcedural(mesh, 0, material, bounds, renderBuffers[i].count, propertyBlocks[i]);
+                Graphics.DrawMeshInstancedProcedural(mesh, 0, material, bounds, worldGen.GetCount(i), propertyBlocks[i]);
             }
         }
 
@@ -128,12 +132,13 @@ public class RenderingManager : MonoBehaviour
     private void OnDisable()
     {
         worldGen.ReleaseBuffers();
+        chunking.DisposeNative();
     }
 
-    private void HeightDispatch()
+    private void HeightDispatch(ref NativeArray<int2> _nativeActiveChunks)
     {
         worldGen.ReleaseRenderBuffers();
-        worldGen.GlobalRendering(cross.Height);
+        worldGen.GlobalRendering(cross.Height, ref _nativeActiveChunks);
     }
 
 

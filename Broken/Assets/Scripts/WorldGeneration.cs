@@ -53,6 +53,13 @@ public class WorldGeneration
     private ComputeBuffer[] mainBuffers;
     private ComputeBuffer[] renderBuffers;
 
+    //
+
+    private List<ComputeBuffer> newRenderBuffers;
+    private List<ComputeBuffer> argBuffers;
+
+    //
+
     private uint[] chunkEdgeTable;
     private Vector3Int[] chunkPositionTable;
     private MaterialPropertyBlock[] propertyBlocks;
@@ -63,6 +70,7 @@ public class WorldGeneration
     private int[] zOffset;
     private bool[] nullChecks;
 
+    //remove active chunks
     //to be changed so is passed from render manager
     private List<ChunkStruct> activeChunks;
 
@@ -144,6 +152,8 @@ public class WorldGeneration
         yOffset = new int[chunkCount];
         zOffset = new int[chunkCount];
         nullChecks = new bool[chunkCount];
+
+
 
         for (int i = 0; i < chunkCount; i++)
         {
@@ -359,8 +369,11 @@ public class WorldGeneration
 
     #endregion
 
-    public void GlobalRendering(int cross)
+    public void GlobalRendering(int cross, ref NativeArray<int2> _nativeActiveChunks)
     {
+
+        UpdateRenderBuffers(_nativeActiveChunks.Length);
+
         int crossYChunk = CrossYChunk(cross);
         computeShader.SetInt("e_crossYChunk", crossYChunk);
         computeShader.SetInt("e_localCrossHeight", LocalCrossHeight(cross));
@@ -381,7 +394,8 @@ public class WorldGeneration
 
         ResetHashBuffer();
 
-        FullVisCalcs();
+        //FullVisCalcs();
+        RefVisCalcs(ref _nativeActiveChunks);
 
         /*
          test = new uint[hashTransferBuffer.count * 2];
@@ -394,7 +408,8 @@ public class WorldGeneration
 
         ZeroNullChecks();
 
-        FullDispatch();
+        //FullDispatch();
+        RefDispatch(ref _nativeActiveChunks);
 
         /*
          test = new uint[hashTransferBuffer.count * 2];
@@ -406,7 +421,7 @@ public class WorldGeneration
          */
     }
 
-    private void FullVisCalcs()
+    private void RefVisCalcs(ref NativeArray<int2> __nativeActiveChunks)
     {
         computeShader.SetBuffer(k_fullVisCalcs, "_LocalPositionBuffer", b_locPos);
         computeShader.SetBuffer(k_fullVisCalcs, "_ChunkPositionTable", b_chunkPosition);
@@ -416,17 +431,17 @@ public class WorldGeneration
         computeShader.SetBuffer(k_fullVisCalcs, "GlobalSolidBuffer", b_globalSolid);
         computeShader.SetBuffer(k_fullVisCalcs, "HashTransferBuffer", hashTransferBuffer);
 
-        for (int i = activeChunks.Count - 1; i > -1; i--)
+        for (int i = __nativeActiveChunks.Length - 1; i > -1; i--)
         {
-            if (activeChunks[i].ChunkCase == 1)
+            if (__nativeActiveChunks[i].y == 1)
             {
-                computeShader.SetInt("chunkIndex", activeChunks[i].Index);
+                computeShader.SetInt("chunkIndex", __nativeActiveChunks[i].x);
                 computeShader.Dispatch(k_fullVisCalcs, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
             }
         }
     }
 
-    private void FullDispatch()
+    private void RefDispatch(ref NativeArray<int2> __nativeActiveChunks)
     {
         computeShader.SetBool("topEdge", false);
         computeShader.SetBuffer(k_fullCull, "_LocalPositionBuffer", b_locPos);
@@ -435,23 +450,42 @@ public class WorldGeneration
         computeShader.SetBuffer(k_fullCull, "_LocalEdgeBuffer", b_locEdge);
         computeShader.SetBuffer(k_fullCull, "HashTransferBuffer", hashTransferBuffer);
 
-        for (int i = activeChunks.Count - 1; i > -1; i--)
+        for (int i = __nativeActiveChunks.Length - 1; i > -1; i--)
         {
-            computeShader.SetInt("chunkIndex", activeChunks[i].Index);
-            computeShader.SetInt("currentYChunk", chunkPositionTable[activeChunks[i].Index].y);
-            ClearMeshBuffer(activeChunks[i].Index);
-            ResetCountBuffer();
+            if (__nativeActiveChunks[i].x != 0x7FFFFFFF)
+            {
+                computeShader.SetInt("chunkIndex", __nativeActiveChunks[i].x);
+                computeShader.SetInt("currentYChunk", chunkPositionTable[__nativeActiveChunks[i].x].y);
+                ClearMeshBuffer(__nativeActiveChunks[i].x);
+                ResetCountBuffer();
 
-            computeShader.SetBuffer(k_fullCull, "_Counter", countBuffer);
-            computeShader.SetBuffer(k_fullCull, "_MeshProperties", mainBuffers[activeChunks[i].Index]);
-            computeShader.Dispatch(k_fullCull, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+                computeShader.SetBuffer(k_fullCull, "_Counter", countBuffer);
+                computeShader.SetBuffer(k_fullCull, "_MeshProperties", mainBuffers[__nativeActiveChunks[i].x]);
+                computeShader.Dispatch(k_fullCull, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
 
-            countBuffer.GetData(count[activeChunks[i].Index]);
-            countBuffer.Release();
-            GenerateRenderProperties(activeChunks[i].Index);
+                countBuffer.GetData(count[__nativeActiveChunks[i].x]);
+                countBuffer.Release();
+                GenerateRenderProperties(__nativeActiveChunks[i].x);
+            }
         }
     }
 
+    private void UpdateRenderBuffers(int length)
+    {
+        if (length < newRenderBuffers.Count)
+        {
+            newRenderBuffers.RemoveRange(length - 1, newRenderBuffers.Count - length);
+            argBuffers.RemoveRange(length - 1, newRenderBuffers.Count - length);
+        }
+        else
+        {
+            for (int i = 0; i < (length - 1) - newRenderBuffers.Count ; i++)
+            {
+                newRenderBuffers.Add(new ComputeBuffer(721, sizeof(uint), ComputeBufferType.Append));
+                argBuffers.Add(new ComputeBuffer(1, sizeof(uint) * 5));
+            }
+        }
+    }
     private int LocalCrossHeight(int _cross)
     {
         return _cross % height;
@@ -484,20 +518,21 @@ public class WorldGeneration
     {
         if (count[index][0] != 0)
         {
-            renderBuffers[index] = new ComputeBuffer(count[index][0], sizeof(uint), ComputeBufferType.Append);
+            //renderBuffers[index] = new ComputeBuffer(count[index][0], sizeof(uint), ComputeBufferType.Append);
+            renderBuffers[index] = new ComputeBuffer(721, sizeof(uint), ComputeBufferType.Append);
             renderBuffers[index].SetCounterValue(0);
             computeShader.SetBuffer(k_render, "_MeshProperties", mainBuffers[index]);
             computeShader.SetBuffer(k_render, "_RenderProperties", renderBuffers[index]);
             computeShader.Dispatch(k_render, dispatchGroups, 1, 1);
 
+            propertyBlocks[index] = new MaterialPropertyBlock();
+            propertyBlocks[index].SetBuffer("_RenderProperties", renderBuffers[index]);
+            propertyBlocks[index].SetInt("e_xOffset", xOffset[index]);
+            propertyBlocks[index].SetInt("e_yOffset", yOffset[index]);
+            propertyBlocks[index].SetInt("e_zOffset", zOffset[index]);
+
             nullChecks[index] = true;
         }
-
-        propertyBlocks[index] = new MaterialPropertyBlock();
-        propertyBlocks[index].SetBuffer("_RenderProperties", renderBuffers[index]);
-        propertyBlocks[index].SetInt("e_xOffset", xOffset[index]);
-        propertyBlocks[index].SetInt("e_yOffset", yOffset[index]);
-        propertyBlocks[index].SetInt("e_zOffset", zOffset[index]);
     }
     #endregion
 
@@ -642,23 +677,9 @@ public class WorldGeneration
         });
     }
 
-
-    [BurstCompile]
-    private struct IndexChunkJob : IJobParallelFor
+    public int GetCount(int index)
     {
-        [ReadOnly]
-        public int xValue;
-
-        [ReadOnly]
-        public int yValue;
-
-        [ReadOnly]
-
-        public NativeArray<int2> chunkListArray;
-
-        public void Execute(int index)
-        {
-        }
+        return count[index][0];
     }
 }
 
