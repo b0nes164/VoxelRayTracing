@@ -49,14 +49,13 @@ public class WorldGeneration
     private ComputeBuffer b_globalSolid;
     private ComputeBuffer b_solidTransfer;
     private ComputeBuffer hashTransferBuffer;
-    private ComputeBuffer countBuffer;
     private ComputeBuffer[] mainBuffers;
-    private ComputeBuffer[] renderBuffers;
 
     //
 
-    private List<ComputeBuffer> newRenderBuffers;
-    private List<ComputeBuffer> argBuffers;
+    private ComputeBuffer[] newRenderBuffers;
+    private ComputeBuffer[] argBuffers;
+    private int bufferArraySize;
 
     //
 
@@ -64,17 +63,11 @@ public class WorldGeneration
     private Vector3Int[] chunkPositionTable;
     private MaterialPropertyBlock[] propertyBlocks;
 
-    private int[][] count;
     private int[] xOffset;
     private int[] yOffset;
     private int[] zOffset;
-    private bool[] nullChecks;
 
-    private uint[] args = new uint[5] { 36, 0, 0, 0, 0 };
-
-    //remove active chunks
-    //to be changed so is passed from render manager
-    private List<ChunkStruct> activeChunks;
+    private uint[] args;
 
     private ComputeBuffer bugBugger;
     private uint[] test;
@@ -91,23 +84,16 @@ public class WorldGeneration
     private int k_initHash;
     private int k_noise;
     private int k_locVisCalc;
-    private int k_clearCountBuffer;
-    private int k_render;
     private int k_fullVisCalcs;
     private int k_fullCull;
-
-    private int clearMeshKern;
     #endregion
 
     //change names in compute shader
-    //change count to a uint
-    //change edge table to local edge table
 
-    public WorldGeneration(ComputeShader _computeShader, List<ChunkStruct> _activeChunks, int _xChunks, int _yChunks, int _zChunks, int _length, int _width, int _height, int _activeDepth)
+    public WorldGeneration(ComputeShader _computeShader, uint meshIndexCount, int maximumActiveChunks,
+            int _xChunks, int _yChunks, int _zChunks, int _length, int _width, int _height, int _activeDepth)
     {
         computeShader = _computeShader;
-
-        activeChunks = _activeChunks;
 
         xChunks = _xChunks;
         yChunks = _yChunks;
@@ -116,7 +102,11 @@ public class WorldGeneration
         height = _height;
         width = _width;
 
+
         activeDepth = _activeDepth;
+        newRenderBuffers = new ComputeBuffer[maximumActiveChunks * _activeDepth];
+        argBuffers = new ComputeBuffer[maximumActiveChunks * _activeDepth];
+        args = new uint[5] { meshIndexCount, 0, 0, 0, 0 };
 
         InitNonStaticVar();
         InitShaderValues();
@@ -145,30 +135,21 @@ public class WorldGeneration
         chunkPositionTable = new Vector3Int[chunkCount];
 
         mainBuffers = new ComputeBuffer[chunkCount];
-        renderBuffers = new ComputeBuffer[chunkCount];
-
-        newRenderBuffers = new List<ComputeBuffer>();
-        argBuffers = new List<ComputeBuffer>();
+        bufferArraySize = 0;
 
         propertyBlocks = new MaterialPropertyBlock[chunkCount];
 
-        count = new int[chunkCount][];
         xOffset = new int[chunkCount];
         yOffset = new int[chunkCount];
         zOffset = new int[chunkCount];
-        nullChecks = new bool[chunkCount];
 
+        //this can be jobified
         for (int i = 0; i < chunkCount; i++)
         {
             xOffset[i] = Mathf.FloorToInt(i / (yChunks * zChunks)) * length;
             yOffset[i] = (Mathf.FloorToInt(i / (zChunks)) % yChunks) * height;
             zOffset[i] = (i % zChunks) * width;
-
-            count[i] = new int[1];
-
-            nullChecks[i] = false;
         }
-
     }
 
     private void InitShaderValues()
@@ -206,13 +187,8 @@ public class WorldGeneration
         k_initHash = computeShader.FindKernel("InitializeHashTransferBuffer");
         k_noise = computeShader.FindKernel("Noise");
         k_locVisCalc = computeShader.FindKernel("LocalVisibilityCalcs");
-        k_clearCountBuffer = computeShader.FindKernel("ClearCounter");
         k_fullVisCalcs = computeShader.FindKernel("FullVisCalcs");
         k_fullCull = computeShader.FindKernel("FullCull");
-
-        k_render = computeShader.FindKernel("PopulateRender");
-
-        clearMeshKern = computeShader.FindKernel("ClearMeshProperties");
         #endregion
 
         b_chunkEdge = new ComputeBuffer(chunkCount, sizeof(uint));
@@ -375,7 +351,7 @@ public class WorldGeneration
     public void GlobalRendering(int cross, ref NativeArray<int2> _nativeActiveChunks)
     {
 
-        UpdateRenderBuffers(_nativeActiveChunks.Length, newRenderBuffers.Count);
+        UpdateRenderBuffers(_nativeActiveChunks.Length, bufferArraySize);
 
         int crossYChunk = CrossYChunk(cross);
         computeShader.SetInt("e_crossYChunk", crossYChunk);
@@ -392,9 +368,6 @@ public class WorldGeneration
             computeShader.SetInt("e_activeDepth", crossYChunk - activeDepth);
         }
 
-        //NoSort(activeChunks);
-        //SortChunkList(activeChunks);
-
         ResetHashBuffer();
 
         //FullVisCalcs();
@@ -408,8 +381,6 @@ public class WorldGeneration
             Debug.Log(test[g]);
         }
          */
-
-        ZeroNullChecks();
 
         //FullDispatch();
         RefDispatch(ref _nativeActiveChunks);
@@ -444,37 +415,6 @@ public class WorldGeneration
         }
     }
 
-    /*
-     private void RefDispatch(ref NativeArray<int2> __nativeActiveChunks)
-    {
-        computeShader.SetBool("topEdge", false);
-        computeShader.SetBuffer(k_fullCull, "_LocalPositionBuffer", b_locPos);
-        computeShader.SetBuffer(k_fullCull, "_ChunkPositionTable", b_chunkPosition);
-        computeShader.SetBuffer(k_fullCull, "_ChunkEdgeTable", b_chunkEdge);
-        computeShader.SetBuffer(k_fullCull, "_LocalEdgeBuffer", b_locEdge);
-        computeShader.SetBuffer(k_fullCull, "HashTransferBuffer", hashTransferBuffer);
-
-        for (int i = __nativeActiveChunks.Length - 1; i > -1; i--)
-        {
-            if (__nativeActiveChunks[i].x != 0x7FFFFFFF)
-            {
-                computeShader.SetInt("chunkIndex", __nativeActiveChunks[i].x);
-                computeShader.SetInt("currentYChunk", chunkPositionTable[__nativeActiveChunks[i].x].y);
-                ClearMeshBuffer(__nativeActiveChunks[i].x);
-                ResetCountBuffer();
-
-                computeShader.SetBuffer(k_fullCull, "_Counter", countBuffer);
-                computeShader.SetBuffer(k_fullCull, "_MeshProperties", mainBuffers[__nativeActiveChunks[i].x]);
-                computeShader.Dispatch(k_fullCull, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
-
-                countBuffer.GetData(count[__nativeActiveChunks[i].x]);
-                countBuffer.Release();
-                GenerateRenderProperties(__nativeActiveChunks[i].x);
-            }
-        }
-    }
-     */
-
     private void RefDispatch(ref NativeArray<int2> __nativeActiveChunks)
     {
         computeShader.SetBuffer(k_fullCull, "_LocalPositionBuffer", b_locPos);
@@ -507,22 +447,29 @@ public class WorldGeneration
         }
     }
 
-    private void UpdateRenderBuffers(int length, int listLength)
+    /// <summary>
+    /// Updates the argsBuffer and renderBuffer arrays to ensure that they contain the correct number of compute buffers. Used to be list but dont care about resizing to save memory.
+    /// The size of the buffer arrays is equalt to the maximum possible size, and are not equal to the correct size of active chunks. To accomodate this, a secondary variable bufferArraySize
+    /// is used to keep track of how big the "current" buffer array size.
+    /// </summary>
+    /// <param name="_activeSize"></param>
+    /// this is the number of active chunks as returned by the chunking algorithm
+    /// <param name="_bufferArraySize"></param>
+    /// this is the the current size of the array buffers
+    private void UpdateRenderBuffers(int _activeSize, int _bufferArraySize)
     {
-        if (length < newRenderBuffers.Count)
+        for (int i = _activeSize; i < _bufferArraySize; i++)
         {
-            newRenderBuffers.RemoveRange(length - 1, listLength - length);
-            argBuffers.RemoveRange(length - 1, listLength - length);
+            newRenderBuffers[i].Release();
+            argBuffers[i].Release();
         }
-        else
+        for (int i = _bufferArraySize; i < _activeSize; i++)
         {
-            int temp = length - listLength;
-            for (int i = 0; i < temp; i++)
-            {
-                newRenderBuffers.Add(new ComputeBuffer(721, sizeof(uint), ComputeBufferType.Append));
-                argBuffers.Add(new ComputeBuffer(1, sizeof(uint) * 5, ComputeBufferType.IndirectArguments));
-            }
+            newRenderBuffers[i] = new ComputeBuffer(721, sizeof(uint), ComputeBufferType.Append);
+            argBuffers[i] = new ComputeBuffer(1, sizeof(uint) * 5, ComputeBufferType.IndirectArguments);
         }
+
+        bufferArraySize = _activeSize;
     }
     private int LocalCrossHeight(int _cross)
     {
@@ -531,24 +478,12 @@ public class WorldGeneration
 
     private int CrossYChunk(int _cross)
     {
-        return Mathf.FloorToInt(_cross/ height);
-    }
-
-    private void ResetCountBuffer()
-    {
-        countBuffer = new ComputeBuffer(1, sizeof(int));
-        computeShader.SetBuffer(k_clearCountBuffer, "_Counter", countBuffer);
-        computeShader.Dispatch(k_clearCountBuffer, 1, 1, 1);
+        return Mathf.FloorToInt(_cross / height);
     }
 
     private void ClearArgsBuffer(int index)
     {
         argBuffers[index].SetData(args);
-    }
-    private void ClearMeshBuffer(int _index)
-    {
-        computeShader.SetBuffer(clearMeshKern, "_MeshProperties", mainBuffers[_index]);
-        computeShader.Dispatch(clearMeshKern, dispatchGroups, 1, 1);
     }
 
     private void ResetHashBuffer()
@@ -556,41 +491,10 @@ public class WorldGeneration
         computeShader.Dispatch(k_initHash, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
     }
 
-    #region Generate Render Values
-    private void GenerateRenderProperties(int index)
-    {
-        if (count[index][0] != 0)
-        {
-            //renderBuffers[index] = new ComputeBuffer(count[index][0], sizeof(uint), ComputeBufferType.Append);
-            renderBuffers[index] = new ComputeBuffer(721, sizeof(uint), ComputeBufferType.Append);
-            renderBuffers[index].SetCounterValue(0);
-            computeShader.SetBuffer(k_render, "_MeshProperties", mainBuffers[index]);
-            computeShader.SetBuffer(k_render, "_RenderProperties", renderBuffers[index]);
-            computeShader.Dispatch(k_render, dispatchGroups, 1, 1);
-
-            propertyBlocks[index] = new MaterialPropertyBlock();
-            propertyBlocks[index].SetBuffer("_RenderProperties", renderBuffers[index]);
-            propertyBlocks[index].SetInt("e_xOffset", xOffset[index]);
-            propertyBlocks[index].SetInt("e_yOffset", yOffset[index]);
-            propertyBlocks[index].SetInt("e_zOffset", zOffset[index]);
-
-            nullChecks[index] = true;
-        }
-    }
-    #endregion
-
-    public List<ComputeBuffer> GetNewRenderBuffers()
-    {
-        return newRenderBuffers;
-    }
-
-    public List<ComputeBuffer> GetArgsBuffer()
+    public ComputeBuffer[] GetArgsBuffer()
     {
         return argBuffers;
     }
-
-
-
 
     public ref MaterialPropertyBlock[] GetPropertyBlocks()
     {
@@ -602,37 +506,9 @@ public class WorldGeneration
         return ref b_locPos;
     }
 
-    public ref ComputeBuffer[] GetRenderBuffers()
-    {
-        return ref renderBuffers;
-    }
-
     public ref Vector3Int[] GetChunkPositionTable()
     {
         return ref chunkPositionTable;
-    }
-
-    public ref bool[] GetNullChecks()
-    {
-        return ref nullChecks;
-    }
-
-    public void ZeroNullChecks()
-    {
-        for (int i = 0; i < nullChecks.Length; i++)
-        {
-            nullChecks[i] = false;
-        }
-    }
-    public void ReleaseRenderBuffers()
-    {
-        for (int i = 0; i < chunkCount; i++)
-        {
-            if (renderBuffers[i] != null)
-            {
-                renderBuffers[i].Dispose();
-            }
-        }
     }
 
     public void ReleaseBuffers()
@@ -650,25 +526,20 @@ public class WorldGeneration
 
         for (int i = 0; i < chunkCount; i++)
         {
-            mainBuffers[i].Release();
-
-            if (renderBuffers[i] != null)
+            if (mainBuffers[i] != null)
             {
-                renderBuffers[i].Release();
+                mainBuffers[i].Release();
             }
         }
 
-        for (int i = 0; i < newRenderBuffers.Count; i++)
+        for (int i = 0; i < newRenderBuffers.Length; i++)
         {
-            newRenderBuffers[i].Release();
-            argBuffers[i].Release();
+            if (newRenderBuffers[i] != null)
+            {
+                newRenderBuffers[i].Release();
+                argBuffers[i].Release();
+            }
         }
-    }
-
-    public struct MeshProperties
-    {
-        public uint lowIndex;
-        public uint highIndex;
     }
 
     //return the mininum number of bits to store height
@@ -709,39 +580,6 @@ public class WorldGeneration
         computeShader.SetInt("e_hashBufferSize", hashTransferBuffer.count);
         computeShader.SetBuffer(k_initHash, "HashTransferBuffer", hashTransferBuffer);
         computeShader.Dispatch(k_initHash, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
-    }
-
-    //takes the inputs from the chunking method
-    private void SortChunkList(List<ChunkStruct> _chunkList)
-    {
-        int highIndex = _chunkList[_chunkList.Count - 1].Index;
-
-        for (int i = 0; i < _chunkList.Count ; i++)
-        {
-            if (chunkPositionTable[_chunkList[i].Index].x == chunkPositionTable[highIndex].x || chunkPositionTable[_chunkList[i].Index].y == chunkPositionTable[highIndex].y
-                || chunkPositionTable[_chunkList[i].Index].z == chunkPositionTable[highIndex].z)
-            {
-                _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 1);
-            }
-        }
-    }
-
-    private void NoSort(List<ChunkStruct> _chunkList)
-    {
-        for (int i = 0; i < _chunkList.Count; i++)
-        {
-            _chunkList[i] = new ChunkStruct(_chunkList[i].Index, 1);
-        }
-
-        _chunkList.Sort(delegate(ChunkStruct x, ChunkStruct y)
-        {
-            return x.Index.CompareTo(y.Index);
-        });
-    }
-
-    public int GetCount(int index)
-    {
-        return count[index][0];
     }
 }
 

@@ -63,57 +63,40 @@ public class RenderingManager : MonoBehaviour
     private Bounds bounds;
 
     private MaterialPropertyBlock[] propertyBlocks;
-    private ComputeBuffer[] renderBuffers;
     private ComputeBuffer locPosBuffer;
 
+    private ComputeBuffer[] argsBuffers;
 
-    private List<ComputeBuffer> newRenderBuffers;
-    private List<ComputeBuffer> argsBuffers;
-
-    private bool[] nullChecks;
     private List<ChunkStruct> activeChunks = new List<ChunkStruct>();
 
-    private Cross cross = new Cross(47, 250, 250);
+    private Cross cross = new Cross(47, 250, 250, false);
 
     private void Start()
     {
         InitValues();
+
         camMovement = new CameraMovement(mainCam, text, cross, camSens, zoomSens, xChunks, yChunks, zChunks, length, height, width);
 
-        worldGen = new WorldGeneration(compute, activeChunks, xChunks, yChunks, zChunks, length, width, height, activeDepth);
+        worldGen = new WorldGeneration(compute, mesh.GetIndexCount(0), camMovement.GetMaximumActiveSize(),
+                        xChunks, yChunks, zChunks, length, width, height, activeDepth);
+
         worldGen.GenerateWorld();
         worldGen.GenerateVisTable();
-
-        
-
-        //delete this
-        nullChecks = worldGen.GetNullChecks();
 
         
 
         chunking = new Chunking(mainCam.transform, activeChunks, worldGen.GetChunkPositionTable(), cross, xChunks, yChunks, zChunks, length, width, height, activeDepth, 6, 6);
 
         argsBuffers = worldGen.GetArgsBuffer();
-        newRenderBuffers = worldGen.GetNewRenderBuffers();
 
         HeightDispatch(ref chunking.GetActiveChunks());
 
         propertyBlocks = worldGen.GetPropertyBlocks();
-        renderBuffers = worldGen.GetRenderBuffers();
         locPosBuffer = worldGen.GetInteriorChunkBuffer();
         material.SetBuffer("_LocalPositionBuffer", locPosBuffer);
 
         InitializeTexture();
         material.SetTexture("_MyArr", textureA);
-
-        if (halfMesh)
-        {
-            mesh = CreateHalfCube();
-        }
-        else
-        {
-            mesh = GetMesh();
-        }
     }
 
     private void Update()
@@ -125,20 +108,7 @@ public class RenderingManager : MonoBehaviour
             HeightDispatch(ref chunking.GetActiveChunks());
         }
 
-        /*
-        for (int i = 0; i < renderBuffers.Length; i++)
-        {
-            if (nullChecks[i])
-            {
-                Graphics.DrawMeshInstancedProcedural(mesh, 0, material, bounds, worldGen.GetCount(i), propertyBlocks[i]);
-            }
-        }
-        */
-
-        for (int i = 0; i < newRenderBuffers.Count; i++)
-        {
-            Graphics.DrawMeshInstancedIndirect(mesh, 0, material, bounds, argsBuffers[i], 0, propertyBlocks[i]);
-        }
+        DrawMain(ref chunking.GetActiveChunks());
 
         text.text = cross.Height + "";
     }
@@ -151,14 +121,36 @@ public class RenderingManager : MonoBehaviour
 
     private void HeightDispatch(ref NativeArray<int2> _nativeActiveChunks)
     {
-        worldGen.ReleaseRenderBuffers();
         worldGen.GlobalRendering(cross.Height, ref _nativeActiveChunks);
+    }
+
+    //see if can use native list for active chunk list
+    private void DrawMain(ref NativeArray<int2> __nativeActiveChunks)
+    {
+        int temp = __nativeActiveChunks.Length;
+
+        for (int i = 0; i < temp; i++)
+        {
+            if (__nativeActiveChunks[i].x != 0x7FFFFFFF)
+            {
+                Graphics.DrawMeshInstancedIndirect(mesh, 0, material, bounds, argsBuffers[i], 0, propertyBlocks[i]);
+            }
+        }
     }
 
 
     private void InitValues()
     {
         bounds = new Bounds(transform.position, Vector3.one * (range + 1));
+
+        if (halfMesh)
+        {
+            mesh = CreateHalfCube();
+        }
+        else
+        {
+            mesh = GetMesh();
+        }
     }
 
     private void InitializeTexture()

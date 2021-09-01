@@ -39,8 +39,6 @@ public class CameraMovement
 
     private readonly float maxViewSize = 50;
 
-    private bool isUpdated = false;
-
     public CameraMovement(Camera _cam, Text _text, Cross _cross, float _camSens, float _zoomSens, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width)
     {
         cam = _cam;
@@ -69,7 +67,7 @@ public class CameraMovement
 
     public void MoveCam()
     {
-        isUpdated = false;
+        cross.IsUpdated = false;
 
         if (Input.GetKey(KeyCode.UpArrow))
         {
@@ -77,8 +75,8 @@ public class CameraMovement
             cross.Z = Mathf.Clamp(cross.Z - camSens * Time.deltaTime, 0, zMax);
 
             cam.transform.position = new Vector3(cross.X + delta.x, cam.transform.position.y, cross.Z + delta.z);
-            
-            isUpdated = true;
+
+            cross.IsUpdated = true;
         }
 
         if (Input.GetKey(KeyCode.DownArrow))
@@ -88,7 +86,7 @@ public class CameraMovement
 
             cam.transform.position = new Vector3(cross.X + delta.x, cam.transform.position.y, cross.Z + delta.z);
 
-            isUpdated = true;
+            cross.IsUpdated = true;
         }
 
         if (Input.GetKey(KeyCode.LeftArrow))
@@ -98,7 +96,7 @@ public class CameraMovement
 
             cam.transform.position = new Vector3(cross.X + delta.x, cam.transform.position.y, cross.Z + delta.z);
 
-            isUpdated = true;
+            cross.IsUpdated = true;
         }
 
         if (Input.GetKey(KeyCode.RightArrow))
@@ -108,7 +106,7 @@ public class CameraMovement
 
             cam.transform.position = new Vector3(cross.X + delta.x, cam.transform.position.y, cross.Z + delta.z);
 
-            isUpdated = true;
+            cross.IsUpdated = true;
         }
 
         if (Input.GetKeyDown(KeyCode.PageDown))
@@ -117,7 +115,7 @@ public class CameraMovement
 
             cam.transform.position = new Vector3(cam.transform.position.x, cross.Height + delta.y, cam.transform.position.z);
 
-            isUpdated = true;
+            cross.IsUpdated = true;
         }
 
         if (Input.GetKeyDown(KeyCode.PageUp))
@@ -126,7 +124,7 @@ public class CameraMovement
 
             cam.transform.position = new Vector3(cam.transform.position.x, cross.Height + delta.y, cam.transform.position.z);
 
-            isUpdated = true;
+            cross.IsUpdated = true;
         }
 
         if (Input.GetKey(KeyCode.Keypad2))
@@ -139,7 +137,7 @@ public class CameraMovement
 
             cam.transform.position = new Vector3(cross.X + delta.x, cross.Height + delta.y, cross.Z + delta.z);
 
-            isUpdated = true;
+            cross.IsUpdated = true;
         }
 
         if (Input.GetKey(KeyCode.Keypad8))
@@ -152,7 +150,7 @@ public class CameraMovement
 
             cam.transform.position = new Vector3(cross.X + delta.x, cross.Height + delta.y, cross.Z + delta.z);
 
-            isUpdated = true;
+            cross.IsUpdated = true;
         }
     }
 
@@ -160,7 +158,14 @@ public class CameraMovement
     //**************************************************************************************************************************************************
     //**************************************************************************************************************************************************
     
-    //why doesnt this exist already?
+    /// <summary>
+    /// Distance formula in two dimensions
+    /// </summary>
+    /// <param name="xOne"></param>
+    /// <param name="xTwo"></param>
+    /// <param name="yOne"></param>
+    /// <param name="yTwo"></param>
+    /// <returns></returns>
     private float Distance(float xOne, float xTwo, float yOne, float yTwo)
     {
         return Mathf.Sqrt(Mathf.Pow(xTwo - xOne, 2) + Mathf.Pow(yTwo - yOne, 2));
@@ -241,7 +246,7 @@ public class CameraMovement
     /// This SHOULD BE active size calculated when the viewport is at the maximum
     private void InitMaxActiveDim(int _activeSize)
     {
-        maximumActiveChunkSize = ((activeSize * 2) + 1) * ((activeSize * 2) + 1);
+        maximumActiveChunkSize = ((_activeSize * 2) + 1) * ((_activeSize * 2) + 1);
     }
 
     /// <summary>
@@ -273,6 +278,14 @@ public class CameraMovement
         delta.y = Distance(tempDelta.x, 0, tempDelta.z, 0) * Mathf.Tan(cam.transform.eulerAngles.x * Mathf.Deg2Rad);
     }
 
+    /// <summary>
+    /// Calls all of the update methods
+    /// </summary>
+    private void UpdateAll()
+    {
+
+    }
+
     public Vector2 GetProjDim()
     {
         return projectionDimension;
@@ -281,6 +294,12 @@ public class CameraMovement
     public int GetActiveSize()
     {
         return activeSize;
+    }
+
+
+    public int GetMaximumActiveSize()
+    {
+        return maximumActiveChunkSize;
     }
 
     public Vector2Int GetDiagUp()
