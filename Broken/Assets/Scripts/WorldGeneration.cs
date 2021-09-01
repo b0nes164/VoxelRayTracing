@@ -31,13 +31,9 @@ public class WorldGeneration
     private int globalLeadingEdgeCount;
     private int globalStepIndex;
     private int chunkStepDepth;
-
-    //to be renamed
-    private int chunkSizeX;
-    private int chunkSizeY;
-    private int chunkSizeZ;
-
     private int activeDepth;
+    private int bufferArraySize;
+    private int maximumActiveChunkSize;
 
     private ComputeBuffer b_chunkEdge;
     private ComputeBuffer b_chunkPosition;
@@ -49,15 +45,10 @@ public class WorldGeneration
     private ComputeBuffer b_globalSolid;
     private ComputeBuffer b_solidTransfer;
     private ComputeBuffer hashTransferBuffer;
+
     private ComputeBuffer[] mainBuffers;
-
-    //
-
     private ComputeBuffer[] newRenderBuffers;
     private ComputeBuffer[] argBuffers;
-    private int bufferArraySize;
-
-    //
 
     private uint[] chunkEdgeTable;
     private Vector3Int[] chunkPositionTable;
@@ -90,7 +81,7 @@ public class WorldGeneration
 
     //change names in compute shader
 
-    public WorldGeneration(ComputeShader _computeShader, uint meshIndexCount, int maximumActiveChunks,
+    public WorldGeneration(ComputeShader _computeShader, uint meshIndexCount, int _maximumActiveChunks,
             int _xChunks, int _yChunks, int _zChunks, int _length, int _width, int _height, int _activeDepth)
     {
         computeShader = _computeShader;
@@ -102,10 +93,9 @@ public class WorldGeneration
         height = _height;
         width = _width;
 
-
         activeDepth = _activeDepth;
-        newRenderBuffers = new ComputeBuffer[maximumActiveChunks * _activeDepth];
-        argBuffers = new ComputeBuffer[maximumActiveChunks * _activeDepth];
+        maximumActiveChunkSize = _maximumActiveChunks * _activeDepth;
+        
         args = new uint[5] { meshIndexCount, 0, 0, 0, 0 };
 
         InitNonStaticVar();
@@ -126,18 +116,16 @@ public class WorldGeneration
         globalLeadingEdgeCount = (globalLength * globalWidth) + (globalLength * (globalHeight - 1)) + ((globalWidth - 1) * (globalHeight - 1));
         globalStepIndex = (globalWidth * globalHeight) + globalWidth + 1;
         chunkStepDepth = yChunks;
-
-        chunkSizeX = xChunks;
-        chunkSizeY = yChunks;
-        chunkSizeZ = zChunks;
+        bufferArraySize = 0;
 
         chunkEdgeTable = new uint[chunkCount];
         chunkPositionTable = new Vector3Int[chunkCount];
 
         mainBuffers = new ComputeBuffer[chunkCount];
-        bufferArraySize = 0;
 
-        propertyBlocks = new MaterialPropertyBlock[chunkCount];
+        newRenderBuffers = new ComputeBuffer[maximumActiveChunkSize];
+        argBuffers = new ComputeBuffer[maximumActiveChunkSize];
+        propertyBlocks = new MaterialPropertyBlock[maximumActiveChunkSize];
 
         xOffset = new int[chunkCount];
         yOffset = new int[chunkCount];
@@ -230,7 +218,10 @@ public class WorldGeneration
         computeShader.SetBuffer(k_initLocTransBuff, "SolidTransferBuffer", b_solidTransfer);
         computeShader.Dispatch(k_initLocTransBuff, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
 
-        InitHashTransferBuffer();
+        hashTransferBuffer = new ComputeBuffer((int)Mathf.Pow(2, HeightToBits(maximumActiveChunkSize * length * width * height)), sizeof(uint) * 2);
+        computeShader.SetInt("e_hashBufferSize", hashTransferBuffer.count);
+        computeShader.SetBuffer(k_initHash, "HashTransferBuffer", hashTransferBuffer);
+        computeShader.Dispatch(k_initHash, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
     }
 
     #region GenerateWorld
@@ -368,9 +359,6 @@ public class WorldGeneration
             computeShader.SetInt("e_activeDepth", crossYChunk - activeDepth);
         }
 
-        ResetHashBuffer();
-
-        //FullVisCalcs();
         RefVisCalcs(ref _nativeActiveChunks);
 
         /*
@@ -382,7 +370,6 @@ public class WorldGeneration
         }
          */
 
-        //FullDispatch();
         RefDispatch(ref _nativeActiveChunks);
 
         /*
@@ -450,27 +437,37 @@ public class WorldGeneration
     /// <summary>
     /// Updates the argsBuffer and renderBuffer arrays to ensure that they contain the correct number of compute buffers. Used to be list but dont care about resizing to save memory.
     /// The size of the buffer arrays is equalt to the maximum possible size, and are not equal to the correct size of active chunks. To accomodate this, a secondary variable bufferArraySize
-    /// is used to keep track of how big the "current" buffer array size.
+    /// is used to keep track of how big the "current" buffer array size. Resets the hash transfer buffer, and resizes if it if the size has changed.
     /// </summary>
-    /// <param name="_activeSize"></param>
+    /// <param name="_activeChunkSize"></param>
     /// this is the number of active chunks as returned by the chunking algorithm
     /// <param name="_bufferArraySize"></param>
     /// this is the the current size of the array buffers
-    private void UpdateRenderBuffers(int _activeSize, int _bufferArraySize)
+    private void UpdateRenderBuffers(int _activeChunkSize, int _bufferArraySize)
     {
-        for (int i = _activeSize; i < _bufferArraySize; i++)
+        for (int i = _activeChunkSize; i < _bufferArraySize; i++)
         {
             newRenderBuffers[i].Release();
             argBuffers[i].Release();
         }
-        for (int i = _bufferArraySize; i < _activeSize; i++)
+        for (int i = _bufferArraySize; i < _activeChunkSize; i++)
         {
             newRenderBuffers[i] = new ComputeBuffer(721, sizeof(uint), ComputeBufferType.Append);
             argBuffers[i] = new ComputeBuffer(1, sizeof(uint) * 5, ComputeBufferType.IndirectArguments);
         }
 
-        bufferArraySize = _activeSize;
+        if (_activeChunkSize != _bufferArraySize)
+        {
+            hashTransferBuffer.Release();
+            hashTransferBuffer = new ComputeBuffer((int)Mathf.Pow(2, HeightToBits(_activeChunkSize * length * width * height)), sizeof(uint) * 2);
+            computeShader.SetInt("e_hashBufferSize", hashTransferBuffer.count);
+            computeShader.SetBuffer(k_initHash, "HashTransferBuffer", hashTransferBuffer);
+        }
+        computeShader.Dispatch(k_initHash, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
+
+        bufferArraySize = _activeChunkSize;
     }
+
     private int LocalCrossHeight(int _cross)
     {
         return _cross % height;
@@ -484,11 +481,6 @@ public class WorldGeneration
     private void ClearArgsBuffer(int index)
     {
         argBuffers[index].SetData(args);
-    }
-
-    private void ResetHashBuffer()
-    {
-        computeShader.Dispatch(k_initHash, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
     }
 
     public ComputeBuffer[] GetArgsBuffer()
@@ -568,18 +560,6 @@ public class WorldGeneration
     private int SolidPackedSize()
     {
         return 32;
-    }
-
-    private void InitHashTransferBuffer()
-    {
-        int x = chunkSizeX * length;
-        int y = chunkSizeY * height;
-        int z = chunkSizeZ * width;
-        int size = (x * z) + (x * (y - 1)) + ((z - 1) * (y - 1));
-        hashTransferBuffer = new ComputeBuffer((int)Mathf.Pow(2, HeightToBits(size)), sizeof(uint) * 2);
-        computeShader.SetInt("e_hashBufferSize", hashTransferBuffer.count);
-        computeShader.SetBuffer(k_initHash, "HashTransferBuffer", hashTransferBuffer);
-        computeShader.Dispatch(k_initHash, Mathf.CeilToInt(hashTransferBuffer.count / 1024f), 1, 1);
     }
 }
 
