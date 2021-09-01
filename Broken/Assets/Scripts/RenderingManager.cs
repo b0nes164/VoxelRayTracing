@@ -69,7 +69,7 @@ public class RenderingManager : MonoBehaviour
 
     private List<ChunkStruct> activeChunks = new List<ChunkStruct>();
 
-    private Cross cross = new Cross(47, 250, 250, false);
+    private Cross cross = new Cross(47, 250, 250, true);
 
     private void Start()
     {
@@ -83,9 +83,7 @@ public class RenderingManager : MonoBehaviour
         worldGen.GenerateWorld();
         worldGen.GenerateVisTable();
 
-        
-
-        chunking = new Chunking(mainCam.transform, activeChunks, worldGen.GetChunkPositionTable(), cross, xChunks, yChunks, zChunks, length, width, height, activeDepth, 6, 6);
+        chunking = new Chunking(cross, camMovement.GetDiagUp(), camMovement.GetDiagRight(), xChunks, yChunks, zChunks, length, height, width, activeDepth, camMovement.GetActiveSize());
 
         argsBuffers = worldGen.GetArgsBuffer();
 
@@ -103,8 +101,9 @@ public class RenderingManager : MonoBehaviour
     {
         camMovement.MoveCam();
 
-        if (chunking.IsNewChunk(camMovement.GetDiagRight(), camMovement.GetDiagUp()))
+        if (cross.IsUpdated)
         {
+            chunking.UpdateChunks(camMovement.GetDiagRight(), camMovement.GetDiagUp(), camMovement.GetActiveSize());
             HeightDispatch(ref chunking.GetActiveChunks());
         }
 

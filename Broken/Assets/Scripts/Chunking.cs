@@ -8,13 +8,7 @@ using Unity.Mathematics;
 
 public class Chunking 
 {
-    private Transform camera;
-
-    private int currentChunkIndex;
-
     private int activeChunkDepth;
-    private int activeChunkLength;
-    private int activeChunkWidth;
 
     private int xChunks;
     private int yChunks;
@@ -24,20 +18,28 @@ public class Chunking
     private int height;
     private int width;
 
-    private readonly int diagonalRight;
-    private readonly int diagonalUp;
-
     private Cross cross;
 
-    private Vector3Int[] chunkPositionTable;
     private Vector3Int pseudoPosition = Vector3Int.zero;
     private Vector3Int truePosition = Vector3Int.zero;
 
-    private List<ChunkStruct> activeChunks;
+    private int2 up = int2.zero;
+    private int2 down = int2.zero;
+    private int2 left = int2.zero;
+    private int2 right = int2.zero;
+
+    private int posLength = 0;
+    private int negLength = 0;
+    private int posWidth = 0;
+    private int negWidth = 0;
+    private int depth = 0;
+    private int totalLength = 0;
+    private int totalDepth = 0;
+    private int totalWidth = 0;
 
     private NativeArray<int2> activeChunkNATIVE;
 
-    public Chunking(Transform _camera, List<ChunkStruct> _activeChunks, Vector3Int[] _chunkPositionTable, Cross _cross, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width, int _activeChunkDepth, int _activeChunkLength, int _activeChunkWidth)
+    public Chunking(Cross _cross, Vector2Int _diagUp, Vector2Int _diagRight, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width, int _activeChunkDepth, int _activeSize)
     {
         xChunks = _xChunks;
         yChunks = _yChunks;
@@ -49,342 +51,73 @@ public class Chunking
 
         cross = _cross;
 
-        chunkPositionTable = _chunkPositionTable;
+        activeChunkDepth = _activeChunkDepth - 1;
 
-        diagonalRight = (zChunks * yChunks * -1) + 1;
-        diagonalUp = (zChunks * yChunks + 1) * -1;
-
-        activeChunkDepth = (_activeChunkDepth - 1);
-        activeChunkLength = _activeChunkLength;
-        activeChunkWidth = _activeChunkWidth;
-        activeChunks = _activeChunks;
-
-        IsNewChunk();
+        UpdateChunks(_diagRight, _diagUp, _activeSize);
     }
 
-    //translates the camera position from global space to chunk space
-    private Vector3Int PseudoChunkPosition()
+    public void UpdateChunks(Vector2Int _diagRight, Vector2Int _diagUp, int _activeSize)
     {
-        return new Vector3Int(Mathf.FloorToInt(cross.X / length), cross.Height,  Mathf.FloorToInt(cross.Z /width));
+        if(cross.IsUpdated)
+        {
+            MultiThreadUpdate(_diagRight, _diagUp, _activeSize);
+        }
     }
 
-    public bool IsNewChunk()
+    private Vector3Int GetTrueChunkPosition()
     {
-        Vector3Int newPseud = PseudoChunkPosition();
-
-        if (pseudoPosition != newPseud)
-        {
-            pseudoPosition = newPseud;
-            UpdateActiveChunks(pseudoPosition);
-            return true;
-        }
-        else
-        {
-            return false;
-        }
+        return new Vector3Int(Mathf.FloorToInt(cross.X / length), Mathf.FloorToInt(cross.Height * 1f / height), Mathf.FloorToInt(cross.Z / width));
     }
 
-    public bool IsNewChunk(Vector2Int _diagRight, Vector2Int _diagUp)
-    {
-        Vector3Int newPseud = PseudoChunkPosition();
-
-        if (pseudoPosition != newPseud)
-        {
-            pseudoPosition = newPseud;
-            MultiThreadUpdate(pseudoPosition, _diagRight, _diagUp);
-            return true;
-        }
-        else
-        {
-            return false;
-        }
-    }
-
-    private Vector3Int GetTruePosition(Vector3Int _pseudoPosition)
-    {
-        return new Vector3Int(_pseudoPosition.x, Mathf.FloorToInt(_pseudoPosition.y * 1f / height), _pseudoPosition.z);
-    }
-
-    private int GetChunkIndex(Vector3Int _truePosition)
-    {
-        return _truePosition.x * zChunks * yChunks + _truePosition.y * zChunks + _truePosition.z;
-    }
-
-    private void UpdateActiveChunks(Vector3Int _pseudoPosition)
-    {
-        int posLength;
-        int negLength;
-        int posWidth;
-        int negWidth;
-        int depth;
-
-        truePosition = GetTruePosition(_pseudoPosition);
-        currentChunkIndex = GetChunkIndex(truePosition);
-
-        int wh = zChunks * yChunks;
-
-        activeChunks.Clear();
-
-        if (truePosition.x < activeChunkLength)
-        {
-            negLength = truePosition.x;
-            posLength = activeChunkLength;
-        }
-        else
-        {
-            if (truePosition.x + activeChunkLength + 1 > xChunks)
-            {
-                posLength = xChunks - (truePosition.x + 1);
-                negLength = activeChunkLength;
-            }
-            else
-            {
-                posLength = activeChunkLength;
-                negLength = activeChunkLength;
-            }
-        }
-
-        if (truePosition.z < activeChunkWidth)
-        {
-            negWidth = truePosition.z;
-            posWidth = activeChunkWidth;
-        }
-        else
-        {
-            if (truePosition.z + activeChunkWidth + 1 > zChunks)
-            {
-                posWidth = zChunks - (truePosition.z + 1);
-                negWidth = activeChunkWidth;
-            }
-            else
-            {
-                posWidth = activeChunkLength;
-                negWidth = activeChunkWidth;
-            }
-        }
-
-        if (truePosition.y < activeChunkDepth)
-        {
-            depth = truePosition.y;
-        }
-        else
-        {
-            depth = activeChunkDepth;
-        }
-
-
-        for (int y = currentChunkIndex - (depth * zChunks); y <= currentChunkIndex; y += zChunks)
-        {
-            for (int x = (y - wh * negLength); x <= (y + wh * posLength); x += wh)
-            {
-                for (int z = (x - negWidth); z <= (x + posWidth); z++)
-                {
-                    activeChunks.Add(new ChunkStruct(z, 0));
-                }
-            }
-        }
-
-        //PopulateChunkList();
-
-        //activeChunks.Add(new ChunkStruct(cameraChunk, 0));
-
-    }
-
-    private void PopulateChunkList()
-    {
-        int chunkcount = xChunks * yChunks * zChunks;
-        for (int i = 0; i < chunkcount; i++)
-        {
-            activeChunks.Add(new ChunkStruct(i, 0));
-        }
-    }
-
-    private void ViewportDefinedChunkUpdate(Vector3Int _pseudoPosition, Vector2Int diagRight, Vector2Int diagUp)
-    {
-        int posLength;
-        int negLength;
-        int posWidth;
-        int negWidth;
-        int depth;
-
-        truePosition = GetTruePosition(_pseudoPosition);
-        currentChunkIndex = GetChunkIndex(truePosition);
-
-        Vector2Int up = new Vector2Int(truePosition.x - diagUp.x, truePosition.z - diagUp.y);
-        Vector2Int down = new Vector2Int(truePosition.x + diagUp.x, truePosition.z + diagUp.y);
-        Vector2Int right = new Vector2Int(truePosition.x - diagRight.x, truePosition.z + diagRight.y);
-        Vector2Int left = new Vector2Int(truePosition.x + diagRight.x, truePosition.z - diagRight.y);
-
-        int wh = zChunks * yChunks;
-
-        activeChunks.Clear();
-
-        if (truePosition.x < activeChunkLength)
-        {
-            negLength = truePosition.x;
-            posLength = activeChunkLength;
-        }
-        else
-        {
-            if (truePosition.x + activeChunkLength + 1 > xChunks)
-            {
-                posLength = xChunks - (truePosition.x + 1);
-                negLength = activeChunkLength;
-            }
-            else
-            {
-                posLength = activeChunkLength;
-                negLength = activeChunkLength;
-            }
-        }
-
-        if (truePosition.z < activeChunkWidth)
-        {
-            negWidth = truePosition.z;
-            posWidth = activeChunkWidth;
-        }
-        else
-        {
-            if (truePosition.z + activeChunkWidth + 1 > zChunks)
-            {
-                posWidth = zChunks - (truePosition.z + 1);
-                negWidth = activeChunkWidth;
-            }
-            else
-            {
-                posWidth = activeChunkLength;
-                negWidth = activeChunkWidth;
-            }
-        }
-
-        if (truePosition.y < activeChunkDepth)
-        {
-            depth = truePosition.y;
-        }
-        else
-        {
-            depth = activeChunkDepth;
-        }
-
-        int tempX;
-        int tempZ;
-
-        for (int y = currentChunkIndex - (depth * zChunks); y <= currentChunkIndex; y += zChunks)
-        {
-            for (int x = -1 * negLength; x < 0; x++)
-            {
-                tempX = y + (wh * x);
-
-                //top quadrant
-                for (int z = -1 * negWidth; z < 0; z++)
-                {
-                    tempZ = tempX + z;
-
-                    if (chunkPositionTable[tempZ].x + chunkPositionTable[tempZ].z >= up.x + up.y)
-                    {
-                        activeChunks.Add(new ChunkStruct(tempZ, 0));
-                    }
-                }
-                //right quadrant
-                for (int z = 0; z <= posWidth; z++)
-                {
-                    tempZ = tempX + z;
-
-                    if(chunkPositionTable[tempZ].z - chunkPositionTable[tempZ].x <= right.y - right.x)
-                    {
-                        activeChunks.Add(new ChunkStruct(tempZ, 0));
-                    }
-                }
-            }
-
-            for (int x = 0; x <= posLength; x++)
-            {
-                tempX = y + (wh * x);
-
-                //left quadrant
-                for (int z = -1 * negWidth; z < 0; z++)
-                {
-                    tempZ = tempX + z;
-
-                    if (chunkPositionTable[tempZ].z - chunkPositionTable[tempZ].x >= left.y - left.x)
-                    {
-                        activeChunks.Add(new ChunkStruct(tempZ, 0));
-                    }
-                }
-
-                //top quadrant
-                for (int z = 0; z <= posWidth; z++)
-                {
-                    tempZ = tempX + z;
-
-                    if (chunkPositionTable[tempZ].x + chunkPositionTable[tempZ].z <= down.x + down.y)
-                    {
-                        activeChunks.Add(new ChunkStruct(tempZ, 0));
-                    }
-                }
-            }
-        }
-
-
-    }
-
-
-    private void MultiThreadUpdate(Vector3Int _pseudoPosition, Vector2Int diagRight, Vector2Int diagUp)
+    private void MultiThreadUpdate(Vector2Int diagRight, Vector2Int diagUp, int activeSize)
     {
         if (activeChunkNATIVE.IsCreated)
         {
             activeChunkNATIVE.Dispose();
         }
 
-        int posLength;
-        int negLength;
-        int posWidth;
-        int negWidth;
-        int depth;
+        truePosition = GetTrueChunkPosition();
 
-        truePosition = GetTruePosition(_pseudoPosition);
-        currentChunkIndex = GetChunkIndex(truePosition);
+        up = new int2(truePosition.x - diagUp.x, truePosition.z - diagUp.y);
+        down = new int2(truePosition.x + diagUp.x, truePosition.z + diagUp.y);
+        right = new int2(truePosition.x - diagRight.x, truePosition.z + diagRight.y);
+        left = new int2(truePosition.x + diagRight.x, truePosition.z - diagRight.y);
 
-        int2 up = new int2(truePosition.x - diagUp.x, truePosition.z - diagUp.y);
-        int2 down = new int2(truePosition.x + diagUp.x, truePosition.z + diagUp.y);
-        int2 right = new int2(truePosition.x - diagRight.x, truePosition.z + diagRight.y);
-        int2 left = new int2(truePosition.x + diagRight.x, truePosition.z - diagRight.y);
-
-        if (truePosition.x < activeChunkLength)
+        if (truePosition.x < activeSize)
         {
             negLength = truePosition.x;
-            posLength = activeChunkLength;
+            posLength = activeSize;
         }
         else
         {
-            if (truePosition.x + activeChunkLength + 1 > xChunks)
+            if (truePosition.x + activeSize + 1 > xChunks)
             {
                 posLength = xChunks - (truePosition.x + 1);
-                negLength = activeChunkLength;
+                negLength = activeSize;
             }
             else
             {
-                posLength = activeChunkLength;
-                negLength = activeChunkLength;
+                posLength = activeSize;
+                negLength = activeSize;
             }
         }
 
-        if (truePosition.z < activeChunkWidth)
+        if (truePosition.z < activeSize)
         {
             negWidth = truePosition.z;
-            posWidth = activeChunkWidth;
+            posWidth = activeSize;
         }
         else
         {
-            if (truePosition.z + activeChunkWidth + 1 > zChunks)
+            if (truePosition.z + activeSize + 1 > zChunks)
             {
                 posWidth = zChunks - (truePosition.z + 1);
-                negWidth = activeChunkWidth;
+                negWidth = activeSize;
             }
             else
             {
-                posWidth = activeChunkLength;
-                negWidth = activeChunkWidth;
+                posWidth = activeSize;
+                negWidth = activeSize;
             }
         }
 
@@ -409,9 +142,9 @@ public class Chunking
             maxPosition.z = down.y;
         }
 
-        int totalLength = negLength + posLength + 1;
-        int totalWidth = negWidth + posWidth + 1;
-        int totalDepth = depth + 1;
+        totalLength = negLength + posLength + 1;
+        totalWidth = negWidth + posWidth + 1;
+        totalDepth = depth + 1;
 
         activeChunkNATIVE = new NativeArray<int2>(totalLength * totalWidth * totalDepth, Allocator.Persistent);
 

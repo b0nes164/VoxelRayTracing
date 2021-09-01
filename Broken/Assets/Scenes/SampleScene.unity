@@ -343,7 +343,7 @@ MonoBehaviour:
   mainCam: {fileID: 963194227}
   compute: {fileID: 7200000, guid: 77d26da3a7a59cf46b10c80c392c99c7, type: 3}
   prefab: {fileID: 5822745854383835123, guid: a3bb77d9d8b191648a36c6ffbabef5d4, type: 3}
-  halfMesh: 0
+  halfMesh: 1
   text: {fileID: 1857610603}
 --- !u!4 &1024011391
 Transform:

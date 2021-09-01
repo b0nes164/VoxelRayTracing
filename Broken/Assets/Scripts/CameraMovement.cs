@@ -134,6 +134,7 @@ public class CameraMovement
             UpdateProjectionDimension();
             UpdateDiagonals();
             UpdateOffset();
+            UpdateActiveDim(projectionDimension.x);
 
             cam.transform.position = new Vector3(cross.X + delta.x, cross.Height + delta.y, cross.Z + delta.z);
 
@@ -147,6 +148,7 @@ public class CameraMovement
             UpdateProjectionDimension();
             UpdateDiagonals();
             UpdateOffset();
+            UpdateActiveDim(projectionDimension.x);
 
             cam.transform.position = new Vector3(cross.X + delta.x, cross.Height + delta.y, cross.Z + delta.z);
 
@@ -236,7 +238,7 @@ public class CameraMovement
     /// the size of the width of the projection. We take the width of the projection because its always bigger.
     private void UpdateActiveDim(float projectionWidth)
     {
-        activeSize = Mathf.CeilToInt((projectionWidth + 8) / sqrtOneTwoEightTimesTwo);
+        activeSize = Mathf.CeilToInt((projectionWidth + 16) / sqrtOneTwoEightTimesTwo);
     }
 
     /// <summary>
@@ -286,16 +288,10 @@ public class CameraMovement
 
     }
 
-    public Vector2 GetProjDim()
-    {
-        return projectionDimension;
-    }
-
     public int GetActiveSize()
     {
         return activeSize;
     }
-
 
     public int GetMaximumActiveSize()
     {
