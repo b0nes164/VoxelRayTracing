@@ -811,17 +811,6 @@ uint GlobalPosToIndex(uint3 globalPos)
     return (globalPos.x * e_globalHeight * e_globalWidth) + (globalPos.y * e_globalWidth) + globalPos.z;
 }
 
-uint GlobalIndexToRayStartingIndex(uint globalIndex, uint chunkIndex, uint3 globalPos, RWStructuredBuffer<uint> chunkEdgeTable)
-{
-    return globalIndex - (LimitingDim(globalPos) * e_globalStepIndex);
-}
-
-//intermediate function needed to pass the global pos
-uint GlobalPosToRayStartingIndex(uint3 globalPos, uint chunkIndex, RWStructuredBuffer<uint> chunkEdgeTable)
-{
-	return GlobalIndexToRayStartingIndex(GlobalPosToIndex(globalPos), chunkIndex, globalPos, chunkEdgeTable);
-}
-
 //a clamping function used for the ray starting index
 uint YClamp(uint valueIn)
 {
@@ -835,36 +824,42 @@ uint YClamp(uint valueIn)
 	}
 }
 
-//converts the global index position of the ray start to the ray index
-uint RayStartingIndexToRay(uint rayStartingIndex)
+uint3 GlobalPosInt(uint3 _globalPos, uint _limitingDim)
 {
-    uint rayStartingX = IndexToXPosition(rayStartingIndex, e_globalHeight, e_globalWidth);
-    uint rayStartingY = IndexToYPosition(rayStartingIndex, e_globalHeight, e_globalWidth);
-	if (rayStartingX == 0)
-	{
-		return rayStartingIndex;
-	}
-	else
-	{
-        return rayStartingIndex - ((rayStartingX - 1) * (e_globalHeight - 1) * (e_globalWidth - 1) + (YClamp(rayStartingY)) * (e_globalWidth - 1));
+    return _globalPos - uint3(_limitingDim, _limitingDim, _limitingDim);
+}
+
+uint3 GlobalPosToStartingPos(uint3 globalPos)
+{
+    return GlobalPosInt(globalPos, LimitingDim(globalPos));
+}
+
+uint StartingPosToRay(uint3 startingPos)
+{
+    if(startingPos.x == 0)
+    {
+        return GlobalPosToIndex(startingPos);
     }
+	else
+    {
+        return GlobalPosToIndex(startingPos) - ((startingPos.x - 1) * (e_globalHeight - 1) * (e_globalWidth - 1) + (YClamp(startingPos.y)) * (e_globalWidth - 1));
+    }
+
 }
 
 //Calls the above methods perform the conversion
 uint LocalIndexToGlobalRay(uint localIndex, uint chunkIndex, RWStructuredBuffer<uint3> localPositionBuffer, RWStructuredBuffer<uint3> chunkPositionTable, RWStructuredBuffer<uint> chunkEdgeTable)
 {
-    return RayStartingIndexToRay(
-		GlobalPosToRayStartingIndex(
+    return StartingPosToRay(
+		GlobalPosToStartingPos(
 			LocalPosToGlobal(
 				LocalIndexToPos(
 					localIndex,
 					localPositionBuffer
-				), 
-				chunkPositionTable, 
+				),
+				chunkPositionTable,
 				chunkIndex
-			), 
-			chunkIndex, 
-			chunkEdgeTable
+			)
 		)
 	);
 }
@@ -1183,11 +1178,11 @@ void Noise(uint3 id : SV_DispatchThreadID)
 	{
         if (_LocalPositionBuffer[id.x].y == 15)
         {
-            _MeshProperties[id.x].lowIndex = 0;
+            _MeshProperties[id.x].lowIndex = 1;
         }
         else
         {
-            _MeshProperties[id.x].lowIndex = 0;
+            _MeshProperties[id.x].lowIndex = 2;
         }
     }
 }
