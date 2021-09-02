@@ -20,13 +20,15 @@ public class Chunking
 
     private Cross cross;
 
-    private Vector3Int pseudoPosition = Vector3Int.zero;
     private Vector3Int truePosition = Vector3Int.zero;
 
     private int2 up = int2.zero;
     private int2 down = int2.zero;
     private int2 left = int2.zero;
     private int2 right = int2.zero;
+
+    private int3 gridOffset = int3.zero;
+    private int3 maxPosition = int3.zero;
 
     private int posLength = 0;
     private int negLength = 0;
@@ -37,9 +39,9 @@ public class Chunking
     private int totalDepth = 0;
     private int totalWidth = 0;
 
-    private NativeArray<int2> activeChunkNATIVE;
+    private NativeArray<int2> activeChunks;
 
-    public Chunking(Cross _cross, Vector2Int _diagUp, Vector2Int _diagRight, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width, int _activeChunkDepth, int _activeSize)
+    public Chunking(Cross _cross, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width, int _activeChunkDepth)
     {
         xChunks = _xChunks;
         yChunks = _yChunks;
@@ -53,14 +55,16 @@ public class Chunking
 
         activeChunkDepth = _activeChunkDepth - 1;
 
-        UpdateChunks(_diagRight, _diagUp, _activeSize);
+        activeChunks = new NativeArray<int2>(cross.ActiveSizeTotal, Allocator.Persistent);
+
+        UpdateChunks();
     }
 
-    public void UpdateChunks(Vector2Int _diagRight, Vector2Int _diagUp, int _activeSize)
+    public void UpdateChunks()
     {
         if(cross.IsUpdated)
         {
-            MultiThreadUpdate(_diagRight, _diagUp, _activeSize);
+            MultiThreadUpdate();
         }
     }
 
@@ -69,55 +73,50 @@ public class Chunking
         return new Vector3Int(Mathf.FloorToInt(cross.X / length), Mathf.FloorToInt(cross.Height * 1f / height), Mathf.FloorToInt(cross.Z / width));
     }
 
-    private void MultiThreadUpdate(Vector2Int diagRight, Vector2Int diagUp, int activeSize)
+    private void MultiThreadUpdate()
     {
-        if (activeChunkNATIVE.IsCreated)
-        {
-            activeChunkNATIVE.Dispose();
-        }
-
         truePosition = GetTrueChunkPosition();
 
-        up = new int2(truePosition.x - diagUp.x, truePosition.z - diagUp.y);
-        down = new int2(truePosition.x + diagUp.x, truePosition.z + diagUp.y);
-        right = new int2(truePosition.x - diagRight.x, truePosition.z + diagRight.y);
-        left = new int2(truePosition.x + diagRight.x, truePosition.z - diagRight.y);
+        up = new int2(truePosition.x - cross.DiagUp.x, truePosition.z - cross.DiagUp.y);
+        down = new int2(truePosition.x + cross.DiagUp.x, truePosition.z + cross.DiagUp.y);
+        right = new int2(truePosition.x - cross.DiagRight.x, truePosition.z + cross.DiagRight.y);
+        left = new int2(truePosition.x + cross.DiagRight.x, truePosition.z - cross.DiagRight.y);
 
-        if (truePosition.x < activeSize)
+        if (truePosition.x < cross.ActiveSize)
         {
             negLength = truePosition.x;
-            posLength = activeSize;
+            posLength = cross.ActiveSize;
         }
         else
         {
-            if (truePosition.x + activeSize + 1 > xChunks)
+            if (truePosition.x + cross.ActiveSize + 1 > xChunks)
             {
                 posLength = xChunks - (truePosition.x + 1);
-                negLength = activeSize;
+                negLength = cross.ActiveSize;
             }
             else
             {
-                posLength = activeSize;
-                negLength = activeSize;
+                posLength = cross.ActiveSize;
+                negLength = cross.ActiveSize;
             }
         }
 
-        if (truePosition.z < activeSize)
+        if (truePosition.z < cross.ActiveSize)
         {
             negWidth = truePosition.z;
-            posWidth = activeSize;
+            posWidth = cross.ActiveSize;
         }
         else
         {
-            if (truePosition.z + activeSize + 1 > zChunks)
+            if (truePosition.z + cross.ActiveSize + 1 > zChunks)
             {
                 posWidth = zChunks - (truePosition.z + 1);
-                negWidth = activeSize;
+                negWidth = cross.ActiveSize;
             }
             else
             {
-                posWidth = activeSize;
-                negWidth = activeSize;
+                posWidth = cross.ActiveSize;
+                negWidth = cross.ActiveSize;
             }
         }
 
@@ -130,9 +129,9 @@ public class Chunking
             depth = activeChunkDepth;
         }
 
-        int3 gridOffset = new int3(truePosition.x - negLength, truePosition.y - depth, truePosition.z - negWidth);
+        gridOffset = new int3(truePosition.x - negLength, truePosition.y - depth, truePosition.z - negWidth);
 
-        int3 maxPosition = new int3(truePosition.x + posLength, truePosition.y, truePosition.z + posWidth);
+        maxPosition = new int3(truePosition.x + posLength, truePosition.y, truePosition.z + posWidth);
         if (maxPosition.x > down.x)
         {
             maxPosition.x = down.x;
@@ -146,7 +145,11 @@ public class Chunking
         totalWidth = negWidth + posWidth + 1;
         totalDepth = depth + 1;
 
-        activeChunkNATIVE = new NativeArray<int2>(totalLength * totalWidth * totalDepth, Allocator.Persistent);
+        if (activeChunks.Length != cross.ActiveSizeTotal)
+        {
+            activeChunks.Dispose();
+            activeChunks = new NativeArray<int2>(cross.ActiveSizeTotal, Allocator.Persistent);
+        }
 
         ChunkJob cj = new ChunkJob()
         {
@@ -162,10 +165,10 @@ public class Chunking
             _down = down,
             _left = left,
             _right = right,
-            _activeChunks = activeChunkNATIVE,
+            _activeChunks = activeChunks,
         };
 
-        JobHandle cjHandle = cj.Schedule(activeChunkNATIVE.Length, 16);
+        JobHandle cjHandle = cj.Schedule(activeChunks.Length, 16);
         cjHandle.Complete();
     }
     
@@ -239,14 +242,14 @@ public class Chunking
 
     public ref NativeArray<int2> GetActiveChunks()
     {
-        return ref activeChunkNATIVE;
+        return ref activeChunks;
     }
 
     public void DisposeNative()
     {
-        if (activeChunkNATIVE.IsCreated)
+        if (activeChunks.IsCreated)
         {
-            activeChunkNATIVE.Dispose();
+            activeChunks.Dispose();
         }
     }
 }

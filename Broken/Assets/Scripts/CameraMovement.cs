@@ -25,13 +25,9 @@ public class CameraMovement
     private Vector3 delta = Vector3.zero;
     private Vector2 projectionDimension = Vector2.zero;
 
-    private int activeSize = 0;
+    private int activeDepth;
     private int maximumActiveChunkSize;
 
-    private Vector2Int diagUp = Vector2Int.zero;
-    private Vector2Int diagRight = Vector2Int.zero;
-
-    //this is a fixed value;
     private float projectionAspectRatio;
 
     private readonly float sqrtEight = Mathf.Sqrt(8f);
@@ -39,7 +35,7 @@ public class CameraMovement
 
     private readonly float maxViewSize = 50;
 
-    public CameraMovement(Camera _cam, Text _text, Cross _cross, float _camSens, float _zoomSens, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width)
+    public CameraMovement(Camera _cam, Text _text, Cross _cross, float _camSens, float _zoomSens, int _xChunks, int _yChunks, int _zChunks, int _length, int _height, int _width, int _activeDepth)
     {
         cam = _cam;
         text = _text;
@@ -54,11 +50,13 @@ public class CameraMovement
         zMax = (_zChunks * _width) - 1;
         yMax = (_yChunks * _height) - 1;
 
+        activeDepth = _activeDepth;
         cam.orthographicSize = maxViewSize;
 
         InitProjDim();
         UpdateActiveDim(projectionDimension.x);
-        InitMaxActiveDim(activeSize);
+        UpdateTotalSize(cross.ActiveSize);
+        maximumActiveChunkSize = cross.ActiveSizeTotal;
         UpdateDiagonals();
         UpdateOffset();
 
@@ -129,12 +127,9 @@ public class CameraMovement
 
         if (Input.GetKey(KeyCode.Keypad2))
         {
-            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize + zoomSens, .1f, maxViewSize);
+            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize + zoomSens, 1f, maxViewSize);
 
-            UpdateProjectionDimension();
-            UpdateDiagonals();
-            UpdateOffset();
-            UpdateActiveDim(projectionDimension.x);
+            UpdateAll();
 
             cam.transform.position = new Vector3(cross.X + delta.x, cross.Height + delta.y, cross.Z + delta.z);
 
@@ -143,12 +138,9 @@ public class CameraMovement
 
         if (Input.GetKey(KeyCode.Keypad8))
         {
-            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize - zoomSens, .1f, maxViewSize);
+            cam.orthographicSize = Mathf.Clamp(cam.orthographicSize - zoomSens, 1f, maxViewSize);
 
-            UpdateProjectionDimension();
-            UpdateDiagonals();
-            UpdateOffset();
-            UpdateActiveDim(projectionDimension.x);
+            UpdateAll();
 
             cam.transform.position = new Vector3(cross.X + delta.x, cross.Height + delta.y, cross.Z + delta.z);
 
@@ -238,17 +230,7 @@ public class CameraMovement
     /// the size of the width of the projection. We take the width of the projection because its always bigger.
     private void UpdateActiveDim(float projectionWidth)
     {
-        activeSize = Mathf.CeilToInt((projectionWidth + 16) / sqrtOneTwoEightTimesTwo);
-    }
-
-    /// <summary>
-    /// Calculates the number of chunks in one height slice at the maxmium viewport size
-    /// </summary>
-    /// <param name="_activeSize"></param>
-    /// This SHOULD BE active size calculated when the viewport is at the maximum
-    private void InitMaxActiveDim(int _activeSize)
-    {
-        maximumActiveChunkSize = ((_activeSize * 2) + 1) * ((_activeSize * 2) + 1);
+        cross.ActiveSize = Mathf.CeilToInt((projectionWidth + 16) / sqrtOneTwoEightTimesTwo);
     }
 
     /// <summary>
@@ -258,10 +240,11 @@ public class CameraMovement
     {
         float tempDiag = projectionDimension.y / sqrtEight;
 
-        diagUp = new Vector2Int(Mathf.CeilToInt(tempDiag / length), Mathf.CeilToInt(tempDiag / width));
+        cross.DiagUp = new Vector2Int(Mathf.CeilToInt(tempDiag / length), Mathf.CeilToInt(tempDiag / width));
 
         tempDiag = projectionDimension.x / sqrtEight;
-        diagRight = new Vector2Int(Mathf.CeilToInt(tempDiag / length), Mathf.CeilToInt(tempDiag / width));
+
+        cross.DiagRight = new Vector2Int(Mathf.CeilToInt(tempDiag / length), Mathf.CeilToInt(tempDiag / width));
     }
 
     /// <summary>
@@ -281,31 +264,28 @@ public class CameraMovement
     }
 
     /// <summary>
+    /// Calculate the number of total active chunks.
+    /// </summary>
+    private void UpdateTotalSize(int _activeSize)
+    {
+        cross.ActiveSizeTotal = ((_activeSize * 2) + 1) * ((_activeSize * 2) + 1) * activeDepth;
+    }
+
+    /// <summary>
     /// Calls all of the update methods
     /// </summary>
     private void UpdateAll()
     {
-
-    }
-
-    public int GetActiveSize()
-    {
-        return activeSize;
+        UpdateProjectionDimension();
+        UpdateDiagonals();
+        UpdateOffset();
+        UpdateActiveDim(projectionDimension.x);
+        UpdateTotalSize(cross.ActiveSize);
     }
 
     public int GetMaximumActiveSize()
     {
         return maximumActiveChunkSize;
-    }
-
-    public Vector2Int GetDiagUp()
-    {
-        return diagUp;
-    }
-
-    public Vector2Int GetDiagRight()
-    {
-        return diagRight;
     }
 
 }

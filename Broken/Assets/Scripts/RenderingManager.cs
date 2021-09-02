@@ -67,29 +67,27 @@ public class RenderingManager : MonoBehaviour
 
     private ComputeBuffer[] argsBuffers;
 
-    private List<ChunkStruct> activeChunks = new List<ChunkStruct>();
-
-    private Cross cross = new Cross(47, 250, 250, true);
+    private Cross cross = new Cross(47, 250, 250, true, Vector2Int.zero, Vector2Int.zero, 0, 0);
 
     private void Start()
     {
         InitValues();
 
-        camMovement = new CameraMovement(mainCam, text, cross, camSens, zoomSens, xChunks, yChunks, zChunks, length, height, width);
+        camMovement = new CameraMovement(mainCam, text, cross, camSens, zoomSens, xChunks, yChunks, zChunks, length, height, width, activeDepth);
 
         worldGen = new WorldGeneration(compute, mesh.GetIndexCount(0), camMovement.GetMaximumActiveSize(),
                         xChunks, yChunks, zChunks, length, width, height, activeDepth);
 
+        chunking = new Chunking(cross, xChunks, yChunks, zChunks, length, height, width, activeDepth);
+
         worldGen.GenerateWorld();
         worldGen.GenerateVisTable();
-
-        chunking = new Chunking(cross, camMovement.GetDiagUp(), camMovement.GetDiagRight(), xChunks, yChunks, zChunks, length, height, width, activeDepth, camMovement.GetActiveSize());
 
         argsBuffers = worldGen.GetArgsBuffer();
 
         HeightDispatch(ref chunking.GetActiveChunks());
-
         propertyBlocks = worldGen.GetPropertyBlocks();
+
         locPosBuffer = worldGen.GetInteriorChunkBuffer();
         material.SetBuffer("_LocalPositionBuffer", locPosBuffer);
 
@@ -103,7 +101,7 @@ public class RenderingManager : MonoBehaviour
 
         if (cross.IsUpdated)
         {
-            chunking.UpdateChunks(camMovement.GetDiagRight(), camMovement.GetDiagUp(), camMovement.GetActiveSize());
+            chunking.UpdateChunks();
             HeightDispatch(ref chunking.GetActiveChunks());
         }
 

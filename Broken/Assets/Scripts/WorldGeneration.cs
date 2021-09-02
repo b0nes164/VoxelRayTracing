@@ -24,7 +24,7 @@ public class WorldGeneration
     private int localChunkSize;
     private int stepIndex;
     private int dispatchGroups;
-    private int smallDispatchGroups;
+    private int edgeDispatchGroups;
     private int globalLength;
     private int globalHeight;
     private int globalWidth;
@@ -94,7 +94,7 @@ public class WorldGeneration
         width = _width;
 
         activeDepth = _activeDepth;
-        maximumActiveChunkSize = _maximumActiveChunks * _activeDepth;
+        maximumActiveChunkSize = _maximumActiveChunks;
         
         args = new uint[5] { meshIndexCount, 0, 0, 0, 0 };
 
@@ -109,7 +109,7 @@ public class WorldGeneration
         localChunkSize = length * width * height;
         stepIndex = (width * height) + width + 1;
         dispatchGroups = Mathf.CeilToInt(localChunkSize / 1024f);
-        smallDispatchGroups = Mathf.CeilToInt(localChunkSize / 768f);
+        edgeDispatchGroups = Mathf.CeilToInt(leadingEdgeCount / 768f);
         globalLength = xChunks * length;
         globalHeight = yChunks * height;
         globalWidth = zChunks * width;
@@ -217,7 +217,7 @@ public class WorldGeneration
         b_solidTransfer = new ComputeBuffer(leadingEdgeCount, sizeof(uint));
         computeShader.SetBuffer(k_initLocTransBuff, "HeightTransferBuffer", b_heightTransfer);
         computeShader.SetBuffer(k_initLocTransBuff, "SolidTransferBuffer", b_solidTransfer);
-        computeShader.Dispatch(k_initLocTransBuff, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+        computeShader.Dispatch(k_initLocTransBuff, edgeDispatchGroups, 1, 1);
 
         hashTransferBuffer = new ComputeBuffer((int)Mathf.Pow(2, HeightToBits(maximumActiveChunkSize * length * width * height)), sizeof(uint) * 2);
         computeShader.SetInt("e_hashBufferSize", hashTransferBuffer.count);
@@ -253,15 +253,14 @@ public class WorldGeneration
     public void GenerateVisTable()
     {
         InitGenVis();
-        for (int i = chunkCount; i > 0; i--)
+        for (int i = chunkCount - 1; i > -1; i--)
         {
-            int index = i - 1;
-            computeShader.SetInt("currentYChunk", chunkPositionTable[index].y);
-            computeShader.SetInt("chunkIndex", index);
+            computeShader.SetInt("currentYChunk", chunkPositionTable[i].y);
+            computeShader.SetInt("chunkIndex", i);
 
             ResetLocalTransferBuffers();
 
-            computeShader.SetBuffer(k_locVisCalc, "_MeshProperties", mainBuffers[index]);
+            computeShader.SetBuffer(k_locVisCalc, "_MeshProperties", mainBuffers[i]);
             computeShader.Dispatch(k_locVisCalc, dispatchGroups, 1, 1);
 
             TransferLocalValuesToGlobal();
@@ -329,12 +328,12 @@ public class WorldGeneration
     }
     private void ResetLocalTransferBuffers()
     {
-        computeShader.Dispatch(k_initLocTransBuff, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+        computeShader.Dispatch(k_initLocTransBuff, edgeDispatchGroups, 1, 1);
     }
 
     private void TransferLocalValuesToGlobal()
     {
-        computeShader.Dispatch(k_transGlob, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+        computeShader.Dispatch(k_transGlob, edgeDispatchGroups, 1, 1);
     }
 
     #endregion
@@ -396,7 +395,7 @@ public class WorldGeneration
             if (__nativeActiveChunks[i].y == 1)
             {
                 computeShader.SetInt("chunkIndex", __nativeActiveChunks[i].x);
-                computeShader.Dispatch(k_fullVisCalcs, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+                computeShader.Dispatch(k_fullVisCalcs, edgeDispatchGroups, 1, 1);
             }
         }
     }
@@ -421,7 +420,7 @@ public class WorldGeneration
                 newRenderBuffers[i].SetCounterValue(0);
 
                 computeShader.SetBuffer(k_fullCull, "_MeshProperties", mainBuffers[__nativeActiveChunks[i].x]);
-                computeShader.Dispatch(k_fullCull, Mathf.CeilToInt(leadingEdgeCount / 768f), 1, 1);
+                computeShader.Dispatch(k_fullCull, edgeDispatchGroups, 1, 1);
 
                 propertyBlocks[i] = new MaterialPropertyBlock();
                 propertyBlocks[i].SetBuffer("_RenderProperties", newRenderBuffers[i]);

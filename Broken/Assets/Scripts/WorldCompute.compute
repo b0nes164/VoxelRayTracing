@@ -1186,11 +1186,11 @@ void Noise(uint3 id : SV_DispatchThreadID)
 	{
         if (_LocalPositionBuffer[id.x].y == 15)
         {
-            _MeshProperties[id.x].lowIndex = 1;
+            _MeshProperties[id.x].lowIndex = 0;
         }
         else
         {
-            _MeshProperties[id.x].lowIndex = 2;
+            _MeshProperties[id.x].lowIndex = 0;
         }
     }
 }
