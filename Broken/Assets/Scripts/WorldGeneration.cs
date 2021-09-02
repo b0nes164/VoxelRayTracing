@@ -236,8 +236,8 @@ public class WorldGeneration
             computeShader.SetInt("e_yOffset", yOffset[i]);
             computeShader.SetInt("e_zOffset", zOffset[i]);
 
-            mainBuffers[i] = new ComputeBuffer(localChunkSize, sizeof(uint) * 2);
-            computeShader.SetBuffer(k_noise, "_MeshProperties", mainBuffers[i]);
+            mainBuffers[i] = new ComputeBuffer(localChunkSize, sizeof(uint));
+            computeShader.SetBuffer(k_noise, "_MainBuffer", mainBuffers[i]);
             computeShader.SetBuffer(k_noise, "_LocalPositionBuffer", b_locPos);
             computeShader.Dispatch(k_noise, dispatchGroups, 1, 1);
         }
@@ -260,7 +260,7 @@ public class WorldGeneration
 
             ResetLocalTransferBuffers();
 
-            computeShader.SetBuffer(k_locVisCalc, "_MeshProperties", mainBuffers[i]);
+            computeShader.SetBuffer(k_locVisCalc, "_MainBuffer", mainBuffers[i]);
             computeShader.Dispatch(k_locVisCalc, dispatchGroups, 1, 1);
 
             TransferLocalValuesToGlobal();
@@ -419,7 +419,7 @@ public class WorldGeneration
                 computeShader.SetBuffer(k_fullCull, "_RenderBuffer", newRenderBuffers[i]);
                 newRenderBuffers[i].SetCounterValue(0);
 
-                computeShader.SetBuffer(k_fullCull, "_MeshProperties", mainBuffers[__nativeActiveChunks[i].x]);
+                computeShader.SetBuffer(k_fullCull, "_MainBuffer", mainBuffers[__nativeActiveChunks[i].x]);
                 computeShader.Dispatch(k_fullCull, edgeDispatchGroups, 1, 1);
 
                 propertyBlocks[i] = new MaterialPropertyBlock();

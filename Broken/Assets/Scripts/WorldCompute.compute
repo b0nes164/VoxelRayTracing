@@ -53,7 +53,7 @@ RWStructuredBuffer<DualIndex> _TempTable;
 
 RWStructuredBuffer<uint> _ChunkVisibilityTables;
 
-RWStructuredBuffer<DualIndex> _MeshProperties;
+RWStructuredBuffer<uint> _MainBuffer;
 
 AppendStructuredBuffer<uint> _RenderBuffer;
 
@@ -916,9 +916,9 @@ uint GetGlobalValue(uint adjustedIndex, uint packedSize, uint sizeInBits, uint c
 //******************************************************************************************************************************
 // Contains the calcaluations for local minumum and solidty as well as the transfer into the global buffer
 
-void LocalVisCalcs(uint localIndex, RWStructuredBuffer<DualIndex> meshProperties, RWStructuredBuffer<uint3> localPositionBuffer, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> solidTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable)
+void LocalVisCalcs(uint localIndex, RWStructuredBuffer<uint> mainBuffer, RWStructuredBuffer<uint3> localPositionBuffer, RWStructuredBuffer<uint> heightTransferBuffer, RWStructuredBuffer<uint> solidTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable)
 {
-	if ((meshProperties[localIndex].lowIndex & 0xFFF) != 0)
+	if ((mainBuffer[localIndex] & 0xFFF) != 0)
 	{
         InterlockedMin(heightTransferBuffer[LocalIndexToLocalRay(localIndex, edgeTable)], localPositionBuffer[localIndex].y);
 		InterlockedOr(solidTransferBuffer[LocalIndexToLocalRay(localIndex, edgeTable)], 1U);
@@ -1014,56 +1014,56 @@ void GlobalVisCalc(uint globalRayIndex, uint adjustedIndex, uint crossYChunk, ui
 // Local Visibility Calcs
 
 //returns whether a local index is solid or not
-bool IsSolid(uint _index, RWStructuredBuffer<DualIndex> _meshProperties)
+bool IsSolid(uint _index, RWStructuredBuffer<uint> _mainBuffer)
 {
-    return (_meshProperties[_index].lowIndex & 0xFFF) != 0;
+    return (_mainBuffer[_index] & 0xFFF) != 0;
 }
 
 //this method does three things: 
 //increments the isntance count on the argue buffer
 //appends the cubeID on the vis buffer
 //sets the shadow flag on the global ray
-void SetVis(uint _index, uint _globalRayIndex, uint _visInfo, RWStructuredBuffer<KeyValue> _hashTransferBuffer, RWStructuredBuffer<DualIndex> _meshProperties, RWStructuredBuffer<Arguments> _argsBuffer, AppendStructuredBuffer<uint> _renderBuffer)
+void SetVis(uint _index, uint _globalRayIndex, uint _visInfo, RWStructuredBuffer<KeyValue> _hashTransferBuffer, RWStructuredBuffer<uint> _mainBuffer, RWStructuredBuffer<Arguments> _argsBuffer, AppendStructuredBuffer<uint> _renderBuffer)
 {
     InterlockedAdd(_argsBuffer[0].instanceCount, 1);
-    _renderBuffer.Append(_index + ((_MeshProperties[_index].lowIndex & 0xFFF) << 16));
+    _renderBuffer.Append(_index + ((_mainBuffer[_index] & 0xFFF) << 16));
     HashInsert(_hashTransferBuffer, _globalRayIndex, (_visInfo | (1 << 4)));
 }
 
-void FinalVisCalc(uint cascIndex, uint _globalRayIndex, uint _visInfo, uint localCrossHeight, uint _currentYChunk, uint _crossYChunk, RWStructuredBuffer<KeyValue> hashTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<DualIndex> meshProperties, 
+void FinalVisCalc(uint cascIndex, uint _globalRayIndex, uint _visInfo, uint localCrossHeight, uint _currentYChunk, uint _crossYChunk, RWStructuredBuffer<KeyValue> hashTransferBuffer, RWStructuredBuffer<TriIndex> edgeTable, RWStructuredBuffer<uint> mainBuffer, 
 	 RWStructuredBuffer<uint3> localPositionBuffer, RWStructuredBuffer<Arguments> argsBuffer, AppendStructuredBuffer<uint> renderBuffer)
 {
 	//why? because the compiler is retarded thats why
     if (_currentYChunk == _crossYChunk)
     {
-        if (IsSolid(cascIndex, meshProperties) && localPositionBuffer[cascIndex].y <= localCrossHeight)
+        if (IsSolid(cascIndex, mainBuffer) && localPositionBuffer[cascIndex].y <= localCrossHeight)
         {
-            SetVis(cascIndex, _globalRayIndex, _visInfo, hashTransferBuffer, meshProperties, argsBuffer, renderBuffer);
+            SetVis(cascIndex, _globalRayIndex, _visInfo, hashTransferBuffer, mainBuffer, argsBuffer, renderBuffer);
             return;
         }
         while (IsNotTrailingFace(edgeTable, cascIndex))
         {
             cascIndex -= e_stepIndex;
-            if (IsSolid(cascIndex, meshProperties) && localPositionBuffer[cascIndex].y <= localCrossHeight)
+            if (IsSolid(cascIndex, mainBuffer) && localPositionBuffer[cascIndex].y <= localCrossHeight)
             {
-                SetVis(cascIndex, _globalRayIndex, _visInfo, hashTransferBuffer, meshProperties, argsBuffer, renderBuffer);
+                SetVis(cascIndex, _globalRayIndex, _visInfo, hashTransferBuffer, mainBuffer, argsBuffer, renderBuffer);
                 return;
             }
         }
     }
     else
     {
-        if (IsSolid(cascIndex, meshProperties))
+        if (IsSolid(cascIndex, mainBuffer))
         {
-            SetVis(cascIndex, _globalRayIndex, _visInfo, hashTransferBuffer, meshProperties, argsBuffer, renderBuffer);
+            SetVis(cascIndex, _globalRayIndex, _visInfo, hashTransferBuffer, mainBuffer, argsBuffer, renderBuffer);
             return;
         }
         while (IsNotTrailingFace(edgeTable, cascIndex))
         {
             cascIndex -= e_stepIndex;
-            if (IsSolid(cascIndex, meshProperties))
+            if (IsSolid(cascIndex, mainBuffer))
             {
-                SetVis(cascIndex, _globalRayIndex, _visInfo, hashTransferBuffer, meshProperties, argsBuffer, renderBuffer);
+                SetVis(cascIndex, _globalRayIndex, _visInfo, hashTransferBuffer, mainBuffer, argsBuffer, renderBuffer);
                 return;
             }
         }
@@ -1165,8 +1165,7 @@ void InitializeRayReference(uint3 id : SV_DispatchThreadID)
 void Noise(uint3 id : SV_DispatchThreadID)
 {
 	//Ensure the Mesh table is wiped
-	_MeshProperties[id.x].lowIndex = 0;
-	_MeshProperties[id.x].highIndex = 0;
+	_MainBuffer[id.x] = 0;
 
     if (noise((_LocalPositionBuffer[id.x] + uint3(e_xOffset, e_yOffset, e_zOffset)) * 0.1) >= .45)
 	{
@@ -1174,11 +1173,11 @@ void Noise(uint3 id : SV_DispatchThreadID)
 		
         if (_LocalPositionBuffer[id.x].y == 15)
         {
-            _MeshProperties[id.x].lowIndex = 1;
+            _MainBuffer[id.x] = 1;
         }
 		else
         {
-            _MeshProperties[id.x].lowIndex = 2;
+            _MainBuffer[id.x] = 2;
         }
             
     }
@@ -1186,11 +1185,11 @@ void Noise(uint3 id : SV_DispatchThreadID)
 	{
         if (_LocalPositionBuffer[id.x].y == 15)
         {
-            _MeshProperties[id.x].lowIndex = 0;
+            _MainBuffer[id.x] = 0;
         }
         else
         {
-            _MeshProperties[id.x].lowIndex = 0;
+            _MainBuffer[id.x] = 0;
         }
     }
 }
@@ -1198,7 +1197,7 @@ void Noise(uint3 id : SV_DispatchThreadID)
 [numthreads(1024, 1, 1)]
 void LocalVisibilityCalcs(uint3 id: SV_DispatchThreadID)
 {
-	LocalVisCalcs(id.x, _MeshProperties, _LocalPositionBuffer, HeightTransferBuffer, SolidTransferBuffer, _LocalEdgeBuffer);
+	LocalVisCalcs(id.x, _MainBuffer, _LocalPositionBuffer, HeightTransferBuffer, SolidTransferBuffer, _LocalEdgeBuffer);
 }
 
 [numthreads(768, 1, 1)]
@@ -1232,7 +1231,7 @@ void FullCull(uint3 id : SV_DispatchThreadID)
         if (((visInfo >> 4) & 1) == 0 && (visInfo & 15U) == currentYChunk)
         {
             FinalVisCalc(LocalRayToTop(id.x, _LocalEdgeBuffer), globalRayIndex, visInfo, e_localCrossHeight, currentYChunk, e_crossYChunk,
-			HashTransferBuffer, _LocalEdgeBuffer, _MeshProperties, _LocalPositionBuffer, _ArgsBuffer, _RenderBuffer);
+			HashTransferBuffer, _LocalEdgeBuffer, _MainBuffer, _LocalPositionBuffer, _ArgsBuffer, _RenderBuffer);
         }
     }
 }
