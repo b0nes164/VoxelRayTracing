@@ -145,6 +145,7 @@ public class Chunking
         totalWidth = negWidth + posWidth + 1;
         totalDepth = depth + 1;
 
+        //this is bugged and needs fixing
         if (activeChunks.Length != cross.ActiveSizeTotal)
         {
             activeChunks.Dispose();
